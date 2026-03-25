@@ -1,0 +1,21 @@
+services:
+  twitter-backend:
+    build: ./backend
+    container_name: twitter-backend
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=sqlite:///app/data/twitter.db
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+    ports:
+      - "8000:8000"
+
+  twitter-frontend:
+    build: ./frontend
+    container_name: twitter-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - twitter-backend
