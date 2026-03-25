@@ -6,6 +6,7 @@ function accountFormHtml(account = null) {
     <div class="form-group"><label>Username (@)</label><input id="f-username" value="${account?.username || ""}"></div>
     <div class="form-group"><label>auth_token</label><input id="f-auth-token" type="password" value=""></div>
     <div class="form-group"><label>ct0</label><input id="f-ct0" type="password" value=""></div>
+    <div class="form-group"><label>実行間隔（分）</label><input id="f-interval-minutes" type="number" min="1" value="${account?.interval_minutes ?? 5}"></div>
   `;
 }
 
@@ -41,8 +42,8 @@ export async function renderAccounts(container) {
       <button class="btn btn-primary" id="add-account">+ Add Account</button>
     </div>
     <div class="card"><table>
-      <thead><tr><th>Name</th><th>Username</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-      <tbody id="accounts-body"><tr><td colspan="5" class="empty-state">Loading...</td></tr></tbody>
+      <thead><tr><th>Name</th><th>Username</th><th>Status</th><th>実行間隔</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody id="accounts-body"><tr><td colspan="6" class="empty-state">Loading...</td></tr></tbody>
     </table></div>
   `;
 
@@ -51,7 +52,7 @@ export async function renderAccounts(container) {
       const accounts = await api.getAccounts();
       const tbody = document.getElementById("accounts-body");
       if (accounts.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="empty-state">No accounts</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="empty-state">No accounts</td></tr>`;
         return;
       }
       tbody.innerHTML = accounts.map((a) => `
@@ -59,6 +60,7 @@ export async function renderAccounts(container) {
           <td>${a.name}</td>
           <td>@${a.username}</td>
           <td><span class="badge ${a.is_active ? "badge-success" : "badge-danger"}">${a.is_active ? "Active" : "Inactive"}</span></td>
+          <td>${a.interval_minutes}分</td>
           <td>${new Date(a.created_at).toLocaleDateString()}</td>
           <td>
             <button class="btn btn-sm btn-primary verify-btn" data-id="${a.id}">Verify</button>
@@ -98,10 +100,12 @@ export async function renderAccounts(container) {
             const username = document.getElementById("f-username").value;
             const authToken = document.getElementById("f-auth-token").value;
             const ct0 = document.getElementById("f-ct0").value;
+            const intervalMinutes = Number(document.getElementById("f-interval-minutes").value);
             if (name) data.name = name;
             if (username) data.username = username;
             if (authToken) data.auth_token = authToken;
             if (ct0) data.ct0 = ct0;
+            data.interval_minutes = intervalMinutes > 0 ? intervalMinutes : 5;
             await api.updateAccount(account.id, data);
             loadAccounts();
           });
@@ -109,7 +113,7 @@ export async function renderAccounts(container) {
       });
     } catch {
       document.getElementById("accounts-body").innerHTML =
-        `<tr><td colspan="5" class="empty-state">Failed to load accounts</td></tr>`;
+        `<tr><td colspan="6" class="empty-state">Failed to load accounts</td></tr>`;
     }
   }
 
@@ -120,6 +124,7 @@ export async function renderAccounts(container) {
         username: document.getElementById("f-username").value,
         auth_token: document.getElementById("f-auth-token").value,
         ct0: document.getElementById("f-ct0").value,
+        interval_minutes: Number(document.getElementById("f-interval-minutes").value) || 5,
       });
       loadAccounts();
     });

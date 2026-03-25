@@ -32,7 +32,7 @@ from models import (
     StatsResponse,
 )
 from executor import verify_credentials
-from worker import run_all_rules, process_rule
+from worker import run_all_rules, run_account_rules, process_rule
 from scheduler import process_pending_posts
 
 logger = logging.getLogger(__name__)
@@ -58,6 +58,50 @@ async def worker_job():
         logger.exception("Worker job failed")
 
 
+def make_account_worker(account_id: int):
+    """Create a per-account worker job function."""
+    async def account_worker_job():
+        try:
+            conn = get_db()
+            key = get_encryption_key()
+            results = await run_account_rules(conn, account_id, key)
+            logger.info("Worker for account %d completed: %s", account_id, results)
+            conn.close()
+        except Exception:
+            logger.exception("Worker job for account %d failed", account_id)
+    return account_worker_job
+
+
+def sync_account_jobs() -> None:
+    """Synchronize APScheduler jobs with current account configurations.
+
+    Removes all existing per-account worker jobs, then re-registers one job
+    per active account using that account's interval_minutes setting.
+    """
+    conn = get_db()
+    try:
+        accounts = conn.execute(
+            "SELECT id, interval_minutes FROM accounts WHERE is_active = 1"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    for job in scheduler.get_jobs():
+        if job.id.startswith("worker_job_"):
+            scheduler.remove_job(job.id)
+
+    for account in accounts:
+        account_id = account["id"]
+        interval = max(1, account["interval_minutes"])
+        scheduler.add_job(
+            make_account_worker(account_id),
+            "interval",
+            minutes=interval,
+            id=f"worker_job_{account_id}",
+        )
+    logger.info("Synced %d account worker job(s)", len(accounts))
+
+
 async def scheduler_job():
     """Periodic job: process pending scheduled posts."""
     try:
@@ -74,7 +118,7 @@ async def scheduler_job():
 async def lifespan(app: FastAPI):
     """Application lifespan: init DB and start scheduler."""
     init_db(DB_PATH)
-    scheduler.add_job(worker_job, "interval", minutes=5, id="worker")
+    sync_account_jobs()
     scheduler.add_job(scheduler_job, "interval", minutes=1, id="scheduler")
     scheduler.start()
     logger.info("Application started")
@@ -100,7 +144,7 @@ def list_accounts():
     conn = get_db()
     try:
         cursor = conn.execute(
-            "SELECT id, name, username, is_active, created_at FROM accounts ORDER BY id"
+            "SELECT id, name, username, is_active, interval_minutes, created_at FROM accounts ORDER BY id"
         )
         return [dict(row) for row in cursor.fetchall()]
     finally:
@@ -116,17 +160,18 @@ def create_account(data: AccountCreate):
         encrypted_ct0 = encrypt(data.ct0, key)
 
         cursor = conn.execute(
-            """INSERT INTO accounts (name, auth_token, ct0, username, is_active)
-            VALUES (?, ?, ?, ?, ?)""",
-            (data.name, encrypted_token, encrypted_ct0, data.username, data.is_active),
+            """INSERT INTO accounts (name, auth_token, ct0, username, is_active, interval_minutes)
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            (data.name, encrypted_token, encrypted_ct0, data.username, data.is_active, data.interval_minutes),
         )
         conn.commit()
         account_id = cursor.lastrowid
 
         row = conn.execute(
-            "SELECT id, name, username, is_active, created_at FROM accounts WHERE id = ?",
+            "SELECT id, name, username, is_active, interval_minutes, created_at FROM accounts WHERE id = ?",
             (account_id,),
         ).fetchone()
+        sync_account_jobs()
         return dict(row)
     finally:
         conn.close()
@@ -147,6 +192,8 @@ def update_account(account_id: int, data: AccountUpdate):
             updates["username"] = data.username
         if data.is_active is not None:
             updates["is_active"] = data.is_active
+        if data.interval_minutes is not None:
+            updates["interval_minutes"] = data.interval_minutes
         if data.auth_token is not None:
             key = get_encryption_key()
             updates["auth_token"] = encrypt(data.auth_token, key)
@@ -161,9 +208,10 @@ def update_account(account_id: int, data: AccountUpdate):
             conn.commit()
 
         row = conn.execute(
-            "SELECT id, name, username, is_active, created_at FROM accounts WHERE id = ?",
+            "SELECT id, name, username, is_active, interval_minutes, created_at FROM accounts WHERE id = ?",
             (account_id,),
         ).fetchone()
+        sync_account_jobs()
         return dict(row)
     finally:
         conn.close()
@@ -177,6 +225,7 @@ def delete_account(account_id: int):
         conn.commit()
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Account not found")
+        sync_account_jobs()
     finally:
         conn.close()
 

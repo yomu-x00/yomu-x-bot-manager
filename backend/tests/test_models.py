@@ -49,6 +49,7 @@ class TestAccountModels:
             name="bot",
             username="user",
             is_active=True,
+            interval_minutes=5,
             created_at=datetime(2025, 1, 1),
         )
         assert resp.id == 1

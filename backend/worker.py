@@ -287,12 +287,13 @@ async def process_rule(conn: sqlite3.Connection, rule: sqlite3.Row, encryption_k
     return executed
 
 
-async def run_all_rules(conn: sqlite3.Connection, encryption_key: bytes) -> dict[int, int]:
-    """Run all active rules and return execution counts per rule."""
+async def run_account_rules(conn: sqlite3.Connection, account_id: int, encryption_key: bytes) -> dict[int, int]:
+    """Run all active rules for a specific account and return execution counts per rule."""
     cursor = conn.execute(
         """SELECT r.* FROM rules r
         JOIN accounts a ON r.account_id = a.id
-        WHERE r.is_active = 1 AND a.is_active = 1"""
+        WHERE r.is_active = 1 AND a.is_active = 1 AND r.account_id = ?""",
+        (account_id,),
     )
     rules = cursor.fetchall()
     results = {}
@@ -305,5 +306,20 @@ async def run_all_rules(conn: sqlite3.Connection, encryption_key: bytes) -> dict
         except Exception:
             logger.exception("Error processing rule %d", rule["id"])
             results[rule["id"]] = 0
+
+    return results
+
+
+async def run_all_rules(conn: sqlite3.Connection, encryption_key: bytes) -> dict[int, int]:
+    """Run all active rules and return execution counts per rule."""
+    cursor = conn.execute(
+        "SELECT id FROM accounts WHERE is_active = 1"
+    )
+    accounts = cursor.fetchall()
+    results = {}
+
+    for account in accounts:
+        account_results = await run_account_rules(conn, account["id"], encryption_key)
+        results.update(account_results)
 
     return results
