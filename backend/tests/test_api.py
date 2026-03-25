@@ -41,6 +41,33 @@ def client():
             yield c
 
 
+class TestAppFactory:
+    """Verify that create_app() produces a correctly configured application."""
+
+    def test_all_api_routes_registered(self, client):
+        routes = {r.path for r in client.app.routes}
+        expected = {
+            "/api/accounts",
+            "/api/accounts/{account_id}",
+            "/api/accounts/{account_id}/verify",
+            "/api/rules",
+            "/api/rules/{rule_id}",
+            "/api/rules/{rule_id}/toggle",
+            "/api/rules/{rule_id}/run",
+            "/api/schedule",
+            "/api/schedule/{post_id}",
+            "/api/monitors",
+            "/api/logs",
+            "/api/stats",
+        }
+        assert expected.issubset(routes)
+
+    def test_cors_middleware_present(self, client):
+        # CORS middleware is present when Allow-Origin header is returned.
+        resp = client.get("/api/accounts", headers={"Origin": "http://example.com"})
+        assert resp.headers.get("access-control-allow-origin") == "*"
+
+
 class TestAccountEndpoints:
     def test_list_accounts_empty(self, client):
         resp = client.get("/api/accounts")
