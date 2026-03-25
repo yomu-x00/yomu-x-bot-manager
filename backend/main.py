@@ -1,5 +1,8 @@
 """FastAPI application entry point with all API endpoints."""
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import json
 import logging
 import os

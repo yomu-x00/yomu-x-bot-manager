@@ -69,13 +69,13 @@ def make_auth_env(auth_token: str, ct0: str) -> dict[str, str]:
 async def search_tweets(auth_token: str, ct0: str, query: str, count: int = 20) -> ExecutionResult:
     """Search tweets using twitter-cli."""
     env = make_auth_env(auth_token, ct0)
-    return await run_cli(["search", query, "--count", str(count)], env=env)
+    return await run_cli(["search", query, "--max", str(count), "--json"], env=env)
 
 
 async def get_user_tweets(auth_token: str, ct0: str, username: str, count: int = 20) -> ExecutionResult:
     """Get tweets from a specific user."""
     env = make_auth_env(auth_token, ct0)
-    return await run_cli(["timeline", username, "--count", str(count)], env=env)
+    return await run_cli(["user-posts", username, "--max", str(count), "--json"], env=env)
 
 
 async def like_tweet(auth_token: str, ct0: str, tweet_id: str) -> ExecutionResult:
@@ -115,6 +115,6 @@ async def post_tweet(auth_token: str, ct0: str, text: str) -> ExecutionResult:
 
 
 async def verify_credentials(auth_token: str, ct0: str) -> ExecutionResult:
-    """Verify that the credentials are valid."""
+    """Verify that the credentials are valid by fetching the authenticated user."""
     env = make_auth_env(auth_token, ct0)
     return await run_cli(["whoami"], env=env)
