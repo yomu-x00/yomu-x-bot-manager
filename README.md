@@ -28,7 +28,8 @@ twitter-cli ベースのルールベース自動化管理ダッシュボード�
 ### 1. 暗号化キーの生成
 
 ```bash
-python -c "from backend.crypto import generate_key; print(generate_key())"
+cd backend
+uv run python -c "from crypto import generate_key; print(generate_key())"
 ```
 
 ### 2. 環境変数の設定
@@ -53,7 +54,7 @@ docker compose up -d
 # Backend
 cd backend
 uv sync
-uv run uvicorn main:app --reload
+DATABASE_PATH=../data/twitter.db ENCRYPTION_KEY=<生成したキー> uv run uvicorn main:app --reload --port 8000
 
 # Frontend
 cd frontend
