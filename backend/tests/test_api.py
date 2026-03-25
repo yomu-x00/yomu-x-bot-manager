@@ -24,10 +24,6 @@ def setup_env(tmp_path, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", _test_key_b64)
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
 
-    # Patch DB_PATH and scheduler before importing app
-    import main
-    monkeypatch.setattr(main, "DB_PATH", db_path)
-
     from db import init_db
     init_db(db_path)
 
