@@ -3,6 +3,15 @@
 twitter-cli ベースのルールベース自動化管理ダッシュボード。
 複数アカウントを管理し、WebUI でルール設定・監視・スケジュール投稿を行う。
 
+## 現在の状態
+
+| 項目 | 状態 |
+|---|---|
+| 自動テスト（161件） | 全パス |
+| ローカル uv 起動 | 動作確認待ち |
+| twitter-cli 実連携 | 手動テスト待ち |
+| Docker デプロイ | 未検証 |
+
 ## 機能
 
 - **アカウント管理**: 複数 Twitter アカウントの Cookie 登録・有効性チェック
@@ -51,28 +60,24 @@ cp .env.example .env
 # ENCRYPTION_KEY に生成したキーを設定
 ```
 
-### 3. Docker Compose で起動
+### 3. ローカル起動（uv）
+
+Docker 不要。動作確認・テストはこちらで行う。
 
 ```bash
-docker compose up -d
-```
-
-- Backend API: `http://localhost:8000`
-- Frontend UI: `http://localhost:5173`
-
-### ローカル開発
-
-```bash
-# Backend
+# Backend（別ターミナル）
 cd backend
 uv sync
 DATABASE_PATH=../data/twitter.db ENCRYPTION_KEY=<生成したキー> uv run uvicorn main:app --reload --port 8000
 
-# Frontend
+# Frontend（別ターミナル）
 cd frontend
 npm install
 npm run dev
 ```
+
+- Backend API: `http://localhost:8000`
+- Frontend UI: `http://localhost:5173`
 
 ### テスト実行
 
@@ -80,6 +85,12 @@ npm run dev
 cd backend
 uv sync --all-extras
 uv run pytest -v
+```
+
+### Docker Compose（本番・デプロイ用）
+
+```bash
+docker compose up -d
 ```
 
 ## ディレクトリ構成
