@@ -5,6 +5,10 @@ register routers, configure middleware, and manage the application lifespan.
 All business logic lives in routers/, repositories/, worker.py, and scheduler.py.
 """
 
+from dotenv import load_dotenv
+load_dotenv()
+
+import json
 import logging
 from contextlib import asynccontextmanager
 
