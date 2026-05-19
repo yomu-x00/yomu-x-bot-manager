@@ -12,6 +12,7 @@ class AccountCreate(BaseModel):
     ct0: str
     username: str
     is_active: bool = True
+    interval_minutes: int = 5
 
 
 class AccountUpdate(BaseModel):
@@ -20,6 +21,7 @@ class AccountUpdate(BaseModel):
     ct0: str | None = None
     username: str | None = None
     is_active: bool | None = None
+    interval_minutes: int | None = None
 
 
 class AccountResponse(BaseModel):
@@ -27,6 +29,7 @@ class AccountResponse(BaseModel):
     name: str
     username: str
     is_active: bool
+    interval_minutes: int
     created_at: datetime
 
 

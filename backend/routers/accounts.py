@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from crypto import encrypt, decrypt
 from dependencies import get_db, get_key
+from jobs import sync_account_jobs
 from models import AccountCreate, AccountResponse, AccountUpdate
 from repositories import AccountRepository
 from executor import verify_credentials
@@ -26,13 +27,16 @@ def create_account(
     key: bytes = Depends(get_key),
 ):
     repo = AccountRepository(conn)
-    return repo.create(
+    result = repo.create(
         name=data.name,
         encrypted_token=encrypt(data.auth_token, key),
         encrypted_ct0=encrypt(data.ct0, key),
         username=data.username,
         is_active=data.is_active,
+        interval_minutes=data.interval_minutes,
     )
+    sync_account_jobs()
+    return result
 
 
 @router.put("/{account_id}", response_model=AccountResponse)
@@ -53,16 +57,19 @@ def update_account(
         updates["username"] = data.username
     if data.is_active is not None:
         updates["is_active"] = data.is_active
+    if data.interval_minutes is not None:
+        updates["interval_minutes"] = data.interval_minutes
     if data.auth_token is not None:
         updates["auth_token"] = encrypt(data.auth_token, key)
     if data.ct0 is not None:
         updates["ct0"] = encrypt(data.ct0, key)
 
     if not updates:
-        row = repo.get_by_id(account_id)
-        return {k: row[k] for k in ("id", "name", "username", "is_active", "created_at")}
+        return repo.get_by_id(account_id)
 
-    return repo.update(account_id, updates)
+    result = repo.update(account_id, updates)
+    sync_account_jobs()
+    return result
 
 
 @router.delete("/{account_id}", status_code=204)
@@ -73,6 +80,7 @@ def delete_account(
     repo = AccountRepository(conn)
     if repo.delete(account_id) == 0:
         raise HTTPException(status_code=404, detail="Account not found")
+    sync_account_jobs()
 
 
 @router.post("/{account_id}/verify")

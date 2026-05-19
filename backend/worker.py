@@ -177,13 +177,17 @@ async def process_rule(
     return executed
 
 
-async def run_all_rules(
-    conn: sqlite3.Connection, encryption_key: bytes
+async def run_account_rules(
+    conn: sqlite3.Connection, account_id: int, encryption_key: bytes
 ) -> dict[int, int]:
-    """Run all active rules and return execution counts per rule."""
-    from repositories.rule_repository import RuleRepository
-
-    rules = RuleRepository(conn).list_active()
+    """Run all active rules for a specific account."""
+    cursor = conn.execute(
+        """SELECT r.* FROM rules r
+        JOIN accounts a ON r.account_id = a.id
+        WHERE r.is_active = 1 AND a.is_active = 1 AND r.account_id = ?""",
+        (account_id,),
+    )
+    rules = cursor.fetchall()
     results: dict[int, int] = {}
 
     for rule in rules:
@@ -194,5 +198,20 @@ async def run_all_rules(
         except Exception:
             logger.exception("Error processing rule %d", rule["id"])
             results[rule["id"]] = 0
+
+    return results
+
+
+async def run_all_rules(conn: sqlite3.Connection, encryption_key: bytes) -> dict[int, int]:
+    """Run all active rules and return execution counts per rule."""
+    cursor = conn.execute(
+        "SELECT id FROM accounts WHERE is_active = 1"
+    )
+    accounts = cursor.fetchall()
+    results = {}
+
+    for account in accounts:
+        account_results = await run_account_rules(conn, account["id"], encryption_key)
+        results.update(account_results)
 
     return results

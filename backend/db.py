@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     ct0 TEXT NOT NULL,
     username TEXT NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT 1,
+    interval_minutes INTEGER NOT NULL DEFAULT 5,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -90,8 +91,15 @@ def init_db(db_path: Path | None = None) -> None:
     conn = get_connection(db_path)
     try:
         conn.executescript(SCHEMA)
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(scheduled_posts)").fetchall()]
-        if "image_paths" not in cols:
+
+        # migrate: add interval_minutes to accounts if missing
+        acct_cols = [r[1] for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
+        if "interval_minutes" not in acct_cols:
+            conn.execute("ALTER TABLE accounts ADD COLUMN interval_minutes INTEGER NOT NULL DEFAULT 5")
+
+        # migrate: add image_paths to scheduled_posts if missing
+        post_cols = [r[1] for r in conn.execute("PRAGMA table_info(scheduled_posts)").fetchall()]
+        if "image_paths" not in post_cols:
             conn.execute("ALTER TABLE scheduled_posts ADD COLUMN image_paths TEXT NOT NULL DEFAULT '[]'")
 
         # migrate: expand repeat_type CHECK to include random_window

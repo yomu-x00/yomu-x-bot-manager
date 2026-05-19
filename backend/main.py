@@ -14,13 +14,13 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
 from crypto import get_encryption_key
-from db import init_db
+from db import get_connection, init_db
 from dependencies import get_db_path
+from jobs import scheduler, sync_account_jobs
 from routers import (
     accounts_router,
     rules_router,
@@ -28,33 +28,16 @@ from routers import (
     monitors_router,
     logs_router,
 )
-from worker import run_all_rules
 from scheduler import process_pending_posts
 
 logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = Path(os.environ.get("DATABASE_PATH", "/app/data/twitter.db")).parent / "uploads"
 
-scheduler = AsyncIOScheduler()
-
-
-async def _worker_job() -> None:
-    """Periodic job: run all active rules."""
-    try:
-        from db import get_connection
-        conn = get_connection(get_db_path())
-        key = get_encryption_key()
-        results = await run_all_rules(conn, key)
-        logger.info("Worker completed: %s", results)
-        conn.close()
-    except Exception:
-        logger.exception("Worker job failed")
-
 
 async def _scheduler_job() -> None:
     """Periodic job: process pending scheduled posts."""
     try:
-        from db import get_connection
         conn = get_connection(get_db_path())
         key = get_encryption_key()
         count = await process_pending_posts(conn, key)
@@ -69,7 +52,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan: initialise DB and start background scheduler."""
     init_db(get_db_path())
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    scheduler.add_job(_worker_job, "interval", minutes=5, id="worker")
+    sync_account_jobs()
     scheduler.add_job(_scheduler_job, "interval", minutes=1, id="scheduler")
     scheduler.start()
     logger.info("Application started")
