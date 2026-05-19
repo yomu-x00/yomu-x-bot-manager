@@ -11,7 +11,8 @@ scheduler = AsyncIOScheduler()
 
 def sync_account_jobs() -> None:
     """Sync per-account worker jobs with current account settings in DB."""
-    from db import get_connection, get_db_path
+    from db import get_connection
+    from dependencies import get_db_path
     from worker import run_account_rules
     from crypto import get_encryption_key
 
