@@ -106,6 +106,7 @@ def init_db(db_path: Path | None = None) -> None:
         row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='scheduled_posts'").fetchone()
         if row and "random_window" not in row[0]:
             conn.executescript("""
+                DROP TABLE IF EXISTS scheduled_posts_new;
                 CREATE TABLE scheduled_posts_new (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
