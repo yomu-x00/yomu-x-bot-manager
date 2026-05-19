@@ -4,12 +4,17 @@ import json
 import logging
 import os
 import sqlite3
+import uuid
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
 from crypto import encrypt, decrypt, get_encryption_key
@@ -35,6 +40,7 @@ from scheduler import process_pending_posts
 logger = logging.getLogger(__name__)
 
 DB_PATH = Path(os.environ.get("DATABASE_PATH", "/app/data/twitter.db"))
+UPLOAD_DIR = DB_PATH.parent / "uploads"
 scheduler = AsyncIOScheduler()
 
 
@@ -71,6 +77,7 @@ async def scheduler_job():
 async def lifespan(app: FastAPI):
     """Application lifespan: init DB and start scheduler."""
     init_db(DB_PATH)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     scheduler.add_job(worker_job, "interval", minutes=5, id="worker")
     scheduler.add_job(scheduler_job, "interval", minutes=1, id="scheduler")
     scheduler.start()
@@ -337,6 +344,20 @@ async def run_rule(rule_id: int):
         conn.close()
 
 
+# --- Upload endpoint ---
+
+@app.post("/api/uploads")
+async def upload_image(file: UploadFile = File(...)):
+    ext = Path(file.filename).suffix.lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+    filename = f"{uuid.uuid4()}{ext}"
+    dest = UPLOAD_DIR / filename
+    content = await file.read()
+    dest.write_bytes(content)
+    return {"path": str(dest)}
+
+
 # --- Schedule endpoints ---
 
 @app.get("/api/schedule", response_model=list[ScheduledPostResponse])
@@ -355,6 +376,7 @@ def list_scheduled_posts(status: str | None = None):
         for row in cursor.fetchall():
             d = dict(row)
             d["repeat_config"] = json.loads(d["repeat_config"]) if isinstance(d["repeat_config"], str) else d["repeat_config"]
+            d["image_paths"] = json.loads(d["image_paths"]) if isinstance(d.get("image_paths"), str) else (d.get("image_paths") or [])
             results.append(d)
         return results
     finally:
@@ -370,11 +392,12 @@ def create_scheduled_post(data: ScheduledPostCreate):
             raise HTTPException(status_code=400, detail="Account not found")
 
         cursor = conn.execute(
-            """INSERT INTO scheduled_posts (account_id, content, scheduled_at, repeat_type, repeat_config)
-            VALUES (?, ?, ?, ?, ?)""",
+            """INSERT INTO scheduled_posts (account_id, content, scheduled_at, repeat_type, repeat_config, image_paths)
+            VALUES (?, ?, ?, ?, ?, ?)""",
             (
                 data.account_id, data.content, data.scheduled_at.isoformat(),
                 data.repeat_type, json.dumps(data.repeat_config),
+                json.dumps(data.image_paths),
             ),
         )
         conn.commit()
@@ -383,6 +406,7 @@ def create_scheduled_post(data: ScheduledPostCreate):
         row = conn.execute("SELECT * FROM scheduled_posts WHERE id = ?", (post_id,)).fetchone()
         d = dict(row)
         d["repeat_config"] = json.loads(d["repeat_config"])
+        d["image_paths"] = json.loads(d["image_paths"])
         return d
     finally:
         conn.close()

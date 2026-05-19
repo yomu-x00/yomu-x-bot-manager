@@ -47,6 +47,13 @@ export const api = {
   getScheduledPosts: (status) => request(`/schedule${status ? `?status=${status}` : ""}`),
   createScheduledPost: (data) => request("/schedule", { method: "POST", body: data }),
   deleteScheduledPost: (id) => request(`/schedule/${id}`, { method: "DELETE" }),
+  uploadImage: async (file) => {
+    const form = new FormData();
+    form.append("file", file);
+    const resp = await fetch("/api/uploads", { method: "POST", body: form });
+    if (!resp.ok) throw new Error("Upload failed");
+    return resp.json();
+  },
 
   // Monitors
   getMonitors: () => request("/monitors"),

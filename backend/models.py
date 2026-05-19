@@ -77,6 +77,7 @@ class ScheduledPostCreate(BaseModel):
     scheduled_at: datetime
     repeat_type: str = "none"
     repeat_config: dict = Field(default_factory=dict)
+    image_paths: list[str] = Field(default_factory=list)
 
 
 class ScheduledPostResponse(BaseModel):
@@ -86,6 +87,7 @@ class ScheduledPostResponse(BaseModel):
     scheduled_at: datetime
     repeat_type: str
     repeat_config: dict
+    image_paths: list[str]
     status: str
     posted_at: datetime | None
 
