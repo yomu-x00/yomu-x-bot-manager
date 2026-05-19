@@ -7,16 +7,15 @@ twitter-cli ベースのルールベース自動化管理ダッシュボード�
 
 | 項目 | 状態 |
 |---|---|
-| 自動テスト（161件） | 全パス |
-| ローカル uv 起動 | 動作確認待ち |
+| ローカル uv 起動 | 動作確認済み |
 | twitter-cli 実連携 | 手動テスト待ち |
 | Docker デプロイ | 未検証 |
 
 ## 機能
 
-- **アカウント管理**: 複数 Twitter アカウントの Cookie 登録・有効性チェック
+- **アカウント管理**: 複数 Twitter アカウントの Cookie 登録・有効性チェック・アカウントごとのWorker実行間隔設定
 - **ルールエンジン**: keyword / user / engagement / schedule トリガーによる自動アクション（like, RT, reply, follow, unfollow）
-- **スケジュール投稿**: 日時指定 + 繰り返し（daily / weekly / custom）
+- **スケジュール投稿**: 日時指定 + 繰り返し（daily / weekly / custom / **ランダム時間帯**）
 - **キーワード監視**: 指定キーワードの検出 + Discord Webhook 通知
 - **実行ログ**: フィルタ・ページネーション付きの実行履歴表示
 - **セキュリティ**: Cookie の AES-GCM 暗号化保存、daily_limit / cooldown による BAN 対策
@@ -60,30 +59,28 @@ cp .env.example .env
 # ENCRYPTION_KEY に生成したキーを設定
 ```
 
-### 3. ローカル起動（uv）
-
-Docker 不要。動作確認・テストはこちらで行う。
+### 3. フロントエンドのビルド（初回 / フロント変更時のみ）
 
 ```bash
-# Backend のみ（API + Swagger UI）
+cd frontend
+npm install
+npm run build
+```
+
+### 4. 起動
+
+```bash
 cd backend
 uv sync
 uv run uvicorn main:app --reload --port 8000
 ```
 
-- API: `http://localhost:8000`
-- Swagger UI: `http://localhost:8000/docs`（フロントなしで API を直接操作可能）
+- WebUI: `http://localhost:8000`
+- Swagger UI: `http://localhost:8000/docs`
 
 `ENCRYPTION_KEY` や `DATABASE_PATH` が未設定の場合は起動時に警告が表示されます。
 
-```bash
-# Frontend も使う場合（別ターミナル）
-cd frontend
-npm install
-npm run dev
-```
-
-- Frontend UI: `http://localhost:5173`
+> フロントエンドのビルド済みファイル（`frontend/dist/`）を FastAPI から直接配信するため、Node プロセスは不要です。フロントのコードを変更した場合のみ再ビルドしてください。
 
 ### テスト実行
 
@@ -212,7 +209,7 @@ ACTION_HANDLERS["bookmark"] = BookmarkActionHandler()
 ```yaml
 ingress:
   - hostname: twitter.yomu.uk
-    service: http://twitter-frontend:80
+    service: http://localhost:8000
 ```
 
 Cloudflare Access で OTP 認証を設定し、WebUI へのアクセスを制限。
