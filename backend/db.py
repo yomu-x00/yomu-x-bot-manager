@@ -120,7 +120,10 @@ def init_db(db_path: Path | None = None) -> None:
                         CHECK(status IN ('pending', 'posted', 'failed')),
                     posted_at DATETIME
                 );
-                INSERT INTO scheduled_posts_new SELECT * FROM scheduled_posts;
+                INSERT INTO scheduled_posts_new
+                    (id, account_id, content, scheduled_at, repeat_type, repeat_config, image_paths, status, posted_at)
+                SELECT id, account_id, content, scheduled_at, repeat_type, repeat_config, image_paths, status, posted_at
+                FROM scheduled_posts;
                 DROP TABLE scheduled_posts;
                 ALTER TABLE scheduled_posts_new RENAME TO scheduled_posts;
                 CREATE INDEX IF NOT EXISTS idx_scheduled_posts_status
