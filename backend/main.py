@@ -16,6 +16,8 @@ from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from crypto import get_encryption_key
 from db import get_connection, init_db
@@ -33,6 +35,7 @@ from scheduler import process_pending_posts
 logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = Path(os.environ.get("DATABASE_PATH", "/app/data/twitter.db")).parent / "uploads"
+FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
 
 
 async def _scheduler_job() -> None:
@@ -119,6 +122,14 @@ def create_app() -> FastAPI:
         content = await file.read()
         dest.write_bytes(content)
         return {"path": str(dest)}
+
+    # フロントエンド静的ファイル配信（dist/ が存在する場合のみ）
+    if FRONTEND_DIST.is_dir():
+        application.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+
+        @application.get("/{full_path:path}", include_in_schema=False)
+        async def serve_spa(full_path: str):
+            return FileResponse(FRONTEND_DIST / "index.html")
 
     return application
 
