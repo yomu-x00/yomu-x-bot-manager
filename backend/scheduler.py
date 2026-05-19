@@ -1,6 +1,9 @@
-"""Scheduled post management and APScheduler integration."""
+"""Scheduled post management (Single Responsibility + Dependency Inversion).
 
-import json
+Refactored to delegate all DB access to ScheduledPostRepository so this
+module only contains scheduling/repeat logic.
+"""
+
 import logging
 import random
 import sqlite3
@@ -8,6 +11,7 @@ from datetime import datetime, timedelta
 
 from crypto import decrypt
 from executor import post_tweet
+from repositories.schedule_repository import ScheduledPostRepository
 
 logger = logging.getLogger(__name__)
 
@@ -17,18 +21,9 @@ async def process_pending_posts(conn: sqlite3.Connection, encryption_key: bytes)
 
     Returns the number of posts processed.
     """
+    repo = ScheduledPostRepository(conn)
     now = datetime.now().isoformat()
-    cursor = conn.execute(
-        """SELECT sp.*, a.auth_token, a.ct0
-        FROM scheduled_posts sp
-        JOIN accounts a ON sp.account_id = a.id
-        WHERE sp.status = 'pending'
-        AND sp.scheduled_at <= ?
-        AND a.is_active = 1
-        ORDER BY sp.scheduled_at ASC""",
-        (now,),
-    )
-    posts = cursor.fetchall()
+    posts = repo.list_pending_due(now)
     processed = 0
 
     for post in posts:
@@ -41,31 +36,18 @@ async def process_pending_posts(conn: sqlite3.Connection, encryption_key: bytes)
             result = await post_tweet(auth_token, ct0, post["content"], images=image_paths)
 
             if result.success:
-                conn.execute(
-                    "UPDATE scheduled_posts SET status = 'posted', posted_at = ? WHERE id = ?",
-                    (datetime.now().isoformat(), post_id),
-                )
+                repo.mark_posted(post_id, datetime.now().isoformat())
                 logger.info("Posted scheduled post %d", post_id)
-
-                # Handle repeating posts
                 _schedule_next_repeat(conn, post)
             else:
-                conn.execute(
-                    "UPDATE scheduled_posts SET status = 'failed' WHERE id = ?",
-                    (post_id,),
-                )
+                repo.mark_failed(post_id)
                 logger.warning("Failed to post scheduled post %d: %s", post_id, result.error)
 
-            conn.commit()
             processed += 1
 
         except Exception:
             logger.exception("Error processing scheduled post %d", post_id)
-            conn.execute(
-                "UPDATE scheduled_posts SET status = 'failed' WHERE id = ?",
-                (post_id,),
-            )
-            conn.commit()
+            repo.mark_failed(post_id)
 
     return processed
 
@@ -76,17 +58,20 @@ def _schedule_next_repeat(conn: sqlite3.Connection, post: sqlite3.Row) -> None:
     if repeat_type == "none":
         return
 
+    import json
     scheduled_at = datetime.fromisoformat(post["scheduled_at"])
-    repeat_config = json.loads(post["repeat_config"]) if isinstance(post["repeat_config"], str) else post["repeat_config"]
+    repeat_config = (
+        json.loads(post["repeat_config"])
+        if isinstance(post["repeat_config"], str)
+        else post["repeat_config"]
+    )
 
-    next_time = None
+    next_time: datetime | None = None
 
     if repeat_type == "daily":
         next_time = scheduled_at + timedelta(days=1)
-
     elif repeat_type == "weekly":
         next_time = scheduled_at + timedelta(weeks=1)
-
     elif repeat_type == "custom":
         interval_hours = repeat_config.get("interval_hours")
         if interval_hours:
@@ -116,15 +101,11 @@ def _schedule_next_repeat(conn: sqlite3.Connection, post: sqlite3.Row) -> None:
         )
 
     if next_time:
-        conn.execute(
-            """INSERT INTO scheduled_posts (account_id, content, scheduled_at, repeat_type, repeat_config, status)
-            VALUES (?, ?, ?, ?, ?, 'pending')""",
-            (
-                post["account_id"],
-                post["content"],
-                next_time.isoformat(),
-                post["repeat_type"],
-                json.dumps(repeat_config) if isinstance(repeat_config, dict) else post["repeat_config"],
-            ),
+        ScheduledPostRepository(conn).schedule_repeat(
+            account_id=post["account_id"],
+            content=post["content"],
+            next_time_iso=next_time.isoformat(),
+            repeat_type=post["repeat_type"],
+            repeat_config=repeat_config,
         )
         logger.info("Scheduled next repeat for post %d at %s", post["id"], next_time)

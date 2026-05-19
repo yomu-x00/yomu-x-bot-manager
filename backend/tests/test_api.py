@@ -24,10 +24,6 @@ def setup_env(tmp_path, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", _test_key_b64)
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
 
-    # Patch DB_PATH and scheduler before importing app
-    import main
-    monkeypatch.setattr(main, "DB_PATH", db_path)
-
     from db import init_db
     init_db(db_path)
 
@@ -43,6 +39,33 @@ def client():
          patch.object(main.scheduler, "add_job"):
         with TestClient(main.app) as c:
             yield c
+
+
+class TestAppFactory:
+    """Verify that create_app() produces a correctly configured application."""
+
+    def test_all_api_routes_registered(self, client):
+        routes = {r.path for r in client.app.routes}
+        expected = {
+            "/api/accounts",
+            "/api/accounts/{account_id}",
+            "/api/accounts/{account_id}/verify",
+            "/api/rules",
+            "/api/rules/{rule_id}",
+            "/api/rules/{rule_id}/toggle",
+            "/api/rules/{rule_id}/run",
+            "/api/schedule",
+            "/api/schedule/{post_id}",
+            "/api/monitors",
+            "/api/logs",
+            "/api/stats",
+        }
+        assert expected.issubset(routes)
+
+    def test_cors_middleware_present(self, client):
+        # CORS middleware is present when Allow-Origin header is returned.
+        resp = client.get("/api/accounts", headers={"Origin": "http://example.com"})
+        assert resp.headers.get("access-control-allow-origin") == "*"
 
 
 class TestAccountEndpoints:

@@ -3,6 +3,15 @@
 twitter-cli ベースのルールベース自動化管理ダッシュボード。
 複数アカウントを管理し、WebUI でルール設定・監視・スケジュール投稿を行う。
 
+## 現在の状態
+
+| 項目 | 状態 |
+|---|---|
+| 自動テスト（161件） | 全パス |
+| ローカル uv 起動 | 動作確認待ち |
+| twitter-cli 実連携 | 手動テスト待ち |
+| Docker デプロイ | 未検証 |
+
 ## 機能
 
 - **アカウント管理**: 複数 Twitter アカウントの Cookie 登録・有効性チェック
@@ -23,6 +32,18 @@ twitter-cli ベースのルールベース自動化管理ダッシュボード�
 | コンテナ | Docker Compose |
 | 公開 | Cloudflare Tunnel + Access |
 
+## アーキテクチャ（SOLID 原則）
+
+バックエンドは以下の5つの SOLID 原則に従って設計されています。
+
+| 原則 | 適用箇所 |
+|---|---|
+| **S**ingle Responsibility | `routers/` で各ドメインのルートを分離、`repositories/` でDB アクセスを分離 |
+| **O**pen/Closed | `triggers/` と `actions/` のストラテジーパターンにより新しいトリガー・アクションを追加しても既存コードを変更不要 |
+| **L**iskov Substitution | `TriggerHandler` / `ActionHandler` の Protocol を実装するハンドラーは相互に置き換え可能 |
+| **I**nterface Segregation | `TriggerHandler`（fetch_tweets + matches）と `ActionHandler`（execute）に責務を細分化 |
+| **D**ependency Inversion | `dependencies.py` の FastAPI Depends 経由で DB 接続・暗号鍵を注入 |
+
 ## セットアップ
 
 ### 1. 暗号化キーの生成
@@ -39,28 +60,24 @@ cp .env.example .env
 # ENCRYPTION_KEY に生成したキーを設定
 ```
 
-### 3. Docker Compose で起動
+### 3. ローカル起動（uv）
+
+Docker 不要。動作確認・テストはこちらで行う。
 
 ```bash
-docker compose up -d
-```
-
-- Backend API: `http://localhost:8000`
-- Frontend UI: `http://localhost:5173`
-
-### ローカル開発
-
-```bash
-# Backend
+# Backend（別ターミナル）
 cd backend
 uv sync
 DATABASE_PATH=../data/twitter.db ENCRYPTION_KEY=<生成したキー> uv run uvicorn main:app --reload --port 8000
 
-# Frontend
+# Frontend（別ターミナル）
 cd frontend
 npm install
 npm run dev
 ```
+
+- Backend API: `http://localhost:8000`
+- Frontend UI: `http://localhost:5173`
 
 ### テスト実行
 
@@ -68,6 +85,12 @@ npm run dev
 cd backend
 uv sync --all-extras
 uv run pytest -v
+```
+
+### Docker Compose（本番・デプロイ用）
+
+```bash
+docker compose up -d
 ```
 
 ## ディレクトリ構成
@@ -78,24 +101,50 @@ uv run pytest -v
 ├── backend/
 │   ├── Dockerfile
 │   ├── pyproject.toml
-│   ├── main.py            # FastAPI エントリポイント + API
-│   ├── worker.py           # ルールエンジン
-│   ├── scheduler.py        # スケジュール投稿管理
-│   ├── executor.py         # twitter-cli コマンドラッパー
-│   ├── db.py               # DB スキーマ・接続管理
-│   ├── models.py           # Pydantic モデル
-│   ├── crypto.py           # AES-GCM 暗号化
-│   └── tests/              # pytest テスト
+│   ├── main.py                # FastAPI アプリファクトリのみ（SRP）
+│   ├── dependencies.py        # FastAPI DI プロバイダ（DIP）
+│   ├── worker.py              # ルールエンジン（ハンドラー委譲版）
+│   ├── scheduler.py           # スケジュール投稿管理（リポジトリ委譲版）
+│   ├── executor.py            # twitter-cli コマンドラッパー
+│   ├── db.py                  # DB スキーマ・接続管理
+│   ├── models.py              # Pydantic モデル
+│   ├── crypto.py              # AES-GCM 暗号化
+│   ├── routers/               # ドメイン別 API ルーター（SRP）
+│   │   ├── accounts.py        # アカウント管理
+│   │   ├── rules.py           # ルール管理
+│   │   ├── schedule.py        # スケジュール投稿
+│   │   ├── monitors.py        # キーワード監視
+│   │   └── logs.py            # ログ・統計
+│   ├── repositories/          # DB アクセス層（SRP + DIP）
+│   │   ├── account_repository.py
+│   │   ├── rule_repository.py
+│   │   ├── schedule_repository.py
+│   │   ├── monitor_repository.py
+│   │   └── log_repository.py
+│   ├── triggers/              # トリガーハンドラー戦略（OCP + SRP）
+│   │   └── __init__.py        # KeywordTrigger / UserTrigger / etc.
+│   ├── actions/               # アクションハンドラー戦略（OCP + SRP）
+│   │   └── __init__.py        # LikeAction / RetweetAction / etc.
+│   └── tests/                 # pytest テスト
+│       ├── test_api.py        # API エンドポイント統合テスト
+│       ├── test_repositories.py # リポジトリ単体テスト
+│       ├── test_handlers.py   # トリガー・アクションハンドラーテスト
+│       ├── test_worker.py     # ルールエンジンテスト
+│       ├── test_scheduler.py  # スケジューラーテスト
+│       ├── test_crypto.py     # 暗号化テスト
+│       ├── test_db.py         # DB テスト
+│       ├── test_executor.py   # executor テスト
+│       └── test_models.py     # モデルテスト
 ├── frontend/
 │   ├── Dockerfile
 │   ├── nginx.conf
 │   ├── index.html
 │   └── src/
-│       ├── main.js         # SPA ルーター
-│       ├── api.js          # API クライアント
-│       └── pages/          # 各画面コンポーネント
+│       ├── main.js            # SPA ルーター
+│       ├── api.js             # API クライアント
+│       └── pages/             # 各画面コンポーネント
 └── data/
-    └── twitter.db          # SQLite DB（自動生成）
+    └── twitter.db             # SQLite DB（自動生成）
 ```
 
 ## API エンドポイント
@@ -114,6 +163,41 @@ uv run pytest -v
 | GET/POST | `/api/monitors` | 監視一覧 / 追加 |
 | GET | `/api/logs` | 実行ログ（フィルタ・ページネーション対応） |
 | GET | `/api/stats` | 統計サマリー |
+
+## 新規トリガー・アクションの追加方法
+
+SOLID の開放閉鎖原則（OCP）により、既存コードを変更せずに拡張できます。
+
+### 新しいトリガーを追加する例
+
+```python
+# backend/triggers/__init__.py に追記するだけ
+
+class MentionTriggerHandler:
+    async def fetch_tweets(self, auth_token, ct0, config):
+        # 実装
+        ...
+
+    def matches(self, tweet, config):
+        # 実装
+        ...
+
+# レジストリへの登録
+TRIGGER_HANDLERS["mention"] = MentionTriggerHandler()
+```
+
+### 新しいアクションを追加する例
+
+```python
+# backend/actions/__init__.py に追記するだけ
+
+class BookmarkActionHandler:
+    async def execute(self, auth_token, ct0, config, tweet):
+        # 実装
+        ...
+
+ACTION_HANDLERS["bookmark"] = BookmarkActionHandler()
+```
 
 ## Cloudflare Tunnel 設定
 

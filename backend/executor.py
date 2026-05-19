@@ -100,5 +100,6 @@ async def get_user_tweets(auth_token: str, ct0: str, username: str, count: int =
 
 
 async def verify_credentials(auth_token: str, ct0: str) -> ExecutionResult:
+    """Verify that the credentials are valid by fetching the authenticated user."""
     env = make_auth_env(auth_token, ct0)
     return await run_cli(["whoami", "--json"], env=env)

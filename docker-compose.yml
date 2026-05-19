@@ -6,7 +6,7 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      - DATABASE_URL=sqlite:///app/data/twitter.db
+      - DATABASE_PATH=/app/data/twitter.db
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     ports:
       - "8000:8000"

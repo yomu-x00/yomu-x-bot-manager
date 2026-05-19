@@ -10,6 +10,7 @@ dependencies = [
     "aiosqlite>=0.20.0",
     "cryptography>=44.0.0",
     "pydantic>=2.10.0",
+    "python-dotenv>=1.0.0",
     "httpx>=0.28.0",
     "python-dotenv>=1.2.2",
     "twikit<2.0",

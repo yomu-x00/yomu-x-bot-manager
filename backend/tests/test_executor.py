@@ -85,7 +85,7 @@ async def test_search_tweets():
         mock_run.return_value = ExecutionResult(True, "[]", "")
         await search_tweets("tok", "ct0", "AI", count=10)
         mock_run.assert_called_once_with(
-            ["search", "AI", "--count", "10"],
+            ["search", "AI", "--max", "10", "--json"],
             env={"TWITTER_AUTH_TOKEN": "tok", "TWITTER_CT0": "ct0"},
         )
 
