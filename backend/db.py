@@ -105,9 +105,10 @@ def init_db(db_path: Path | None = None) -> None:
         # migrate: expand repeat_type CHECK to include random_window
         row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='scheduled_posts'").fetchone()
         if row and "random_window" not in row[0]:
-            conn.executescript("""
-                DROP TABLE IF EXISTS scheduled_posts_new;
-                CREATE TABLE scheduled_posts_new (
+            existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(scheduled_posts)").fetchall()}
+            image_expr = "COALESCE(image_paths, '[]')" if "image_paths" in existing_cols else "'[]'"
+            conn.execute("DROP TABLE IF EXISTS scheduled_posts_new")
+            conn.execute("""CREATE TABLE scheduled_posts_new (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                     content TEXT NOT NULL,
@@ -119,16 +120,15 @@ def init_db(db_path: Path | None = None) -> None:
                     status TEXT NOT NULL DEFAULT 'pending'
                         CHECK(status IN ('pending', 'posted', 'failed')),
                     posted_at DATETIME
-                );
-                INSERT INTO scheduled_posts_new
+                )""")
+            conn.execute(f"""INSERT INTO scheduled_posts_new
                     (id, account_id, content, scheduled_at, repeat_type, repeat_config, image_paths, status, posted_at)
-                SELECT id, account_id, content, scheduled_at, repeat_type, repeat_config, image_paths, status, posted_at
-                FROM scheduled_posts;
-                DROP TABLE scheduled_posts;
-                ALTER TABLE scheduled_posts_new RENAME TO scheduled_posts;
-                CREATE INDEX IF NOT EXISTS idx_scheduled_posts_status
-                    ON scheduled_posts(status, scheduled_at);
-            """)
+                SELECT id, account_id, content, scheduled_at, repeat_type, repeat_config,
+                    {image_expr}, COALESCE(status, 'pending'), posted_at
+                FROM scheduled_posts""")
+            conn.execute("DROP TABLE scheduled_posts")
+            conn.execute("ALTER TABLE scheduled_posts_new RENAME TO scheduled_posts")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_scheduled_posts_status ON scheduled_posts(status, scheduled_at)")
 
         conn.commit()
     finally:
