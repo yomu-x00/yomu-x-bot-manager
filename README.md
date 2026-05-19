@@ -65,18 +65,24 @@ cp .env.example .env
 Docker 不要。動作確認・テストはこちらで行う。
 
 ```bash
-# Backend（別ターミナル）
+# Backend のみ（API + Swagger UI）
 cd backend
 uv sync
-DATABASE_PATH=../data/twitter.db ENCRYPTION_KEY=<生成したキー> uv run uvicorn main:app --reload --port 8000
+uv run uvicorn main:app --reload --port 8000
+```
 
-# Frontend（別ターミナル）
+- API: `http://localhost:8000`
+- Swagger UI: `http://localhost:8000/docs`（フロントなしで API を直接操作可能）
+
+`ENCRYPTION_KEY` や `DATABASE_PATH` が未設定の場合は起動時に警告が表示されます。
+
+```bash
+# Frontend も使う場合（別ターミナル）
 cd frontend
 npm install
 npm run dev
 ```
 
-- Backend API: `http://localhost:8000`
 - Frontend UI: `http://localhost:5173`
 
 ### テスト実行

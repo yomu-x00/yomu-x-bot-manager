@@ -47,9 +47,38 @@ async def _scheduler_job() -> None:
         logger.exception("Scheduler job failed")
 
 
+def _check_env() -> None:
+    """Warn about missing or default environment variables at startup."""
+    import sys
+    warnings = []
+
+    key = os.environ.get("ENCRYPTION_KEY", "")
+    if not key or key == "your_base64_key_here":
+        warnings.append(
+            "  ENCRYPTION_KEY が未設定です。"
+            " `uv run python -c \"from crypto import generate_key; print(generate_key())\"`"
+            " で生成して .env に設定してください。"
+        )
+
+    db_path = get_db_path()
+    if not db_path.parent.exists():
+        warnings.append(
+            f"  DATABASE_PATH のディレクトリが存在しません: {db_path.parent}"
+            " （自動作成します）"
+        )
+
+    if warnings:
+        print("\n[WARNING] 起動設定を確認してください:", file=sys.stderr)
+        for w in warnings:
+            print(w, file=sys.stderr)
+        print("", file=sys.stderr)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: initialise DB and start background scheduler."""
+    _check_env()
+    get_db_path().parent.mkdir(parents=True, exist_ok=True)
     init_db(get_db_path())
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     sync_account_jobs()
