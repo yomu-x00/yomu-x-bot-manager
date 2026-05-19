@@ -59,20 +59,22 @@ cp .env.example .env
 # ENCRYPTION_KEY に生成したキーを設定
 ```
 
-### 3. フロントエンドのビルド（初回 / フロント変更時のみ）
+### 3. 起動
 
 ```bash
-cd frontend
-npm install
-npm run build
+./dev.sh
 ```
 
-### 4. 起動
+フロントエンドのビルドとバックエンドの起動をまとめて実行します。
+
+または個別に：
 
 ```bash
-cd backend
-uv sync
-uv run uvicorn main:app --reload --port 8000
+# フロントエンドビルド（初回 / フロント変更時のみ）
+cd frontend && npm install && npm run build
+
+# バックエンド起動
+cd backend && uv sync && uv run uvicorn main:app --reload --port 8000
 ```
 
 - WebUI: `http://localhost:8000`
