@@ -35,8 +35,9 @@ CREATE TABLE IF NOT EXISTS scheduled_posts (
     account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     scheduled_at DATETIME NOT NULL,
-    repeat_type TEXT NOT NULL DEFAULT 'none' CHECK(repeat_type IN ('none', 'daily', 'weekly', 'custom')),
+    repeat_type TEXT NOT NULL DEFAULT 'none' CHECK(repeat_type IN ('none', 'daily', 'weekly', 'custom', 'random_window')),
     repeat_config JSON NOT NULL DEFAULT '{}',
+    image_paths TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'posted', 'failed')),
     posted_at DATETIME
 );
@@ -89,6 +90,34 @@ def init_db(db_path: Path | None = None) -> None:
     conn = get_connection(db_path)
     try:
         conn.executescript(SCHEMA)
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(scheduled_posts)").fetchall()]
+        if "image_paths" not in cols:
+            conn.execute("ALTER TABLE scheduled_posts ADD COLUMN image_paths TEXT NOT NULL DEFAULT '[]'")
+
+        # migrate: expand repeat_type CHECK to include random_window
+        row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='scheduled_posts'").fetchone()
+        if row and "random_window" not in row[0]:
+            conn.executescript("""
+                CREATE TABLE scheduled_posts_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                    content TEXT NOT NULL,
+                    scheduled_at DATETIME NOT NULL,
+                    repeat_type TEXT NOT NULL DEFAULT 'none'
+                        CHECK(repeat_type IN ('none', 'daily', 'weekly', 'custom', 'random_window')),
+                    repeat_config JSON NOT NULL DEFAULT '{}',
+                    image_paths TEXT NOT NULL DEFAULT '[]',
+                    status TEXT NOT NULL DEFAULT 'pending'
+                        CHECK(status IN ('pending', 'posted', 'failed')),
+                    posted_at DATETIME
+                );
+                INSERT INTO scheduled_posts_new SELECT * FROM scheduled_posts;
+                DROP TABLE scheduled_posts;
+                ALTER TABLE scheduled_posts_new RENAME TO scheduled_posts;
+                CREATE INDEX IF NOT EXISTS idx_scheduled_posts_status
+                    ON scheduled_posts(status, scheduled_at);
+            """)
+
         conn.commit()
     finally:
         conn.close()
