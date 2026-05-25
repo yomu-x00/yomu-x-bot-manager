@@ -47,16 +47,26 @@ class TestAppFactory:
     def test_all_api_routes_registered(self, client):
         routes = {r.path for r in client.app.routes}
         expected = {
+            "/api/health",
             "/api/accounts",
             "/api/accounts/{account_id}",
+            "/api/accounts/{account_id}/tweet",
+            "/api/accounts/{account_id}/timeline",
             "/api/accounts/{account_id}/verify",
             "/api/rules",
+            "/api/rules/run-all",
             "/api/rules/{rule_id}",
             "/api/rules/{rule_id}/toggle",
             "/api/rules/{rule_id}/run",
             "/api/schedule",
             "/api/schedule/{post_id}",
             "/api/monitors",
+            "/api/monitors/{monitor_id}",
+            "/api/monitors/{monitor_id}/toggle",
+            "/api/search",
+            "/api/uploads",
+            "/api/uploads/{filename}",
+            "/api/webhook/tweet",
             "/api/logs",
             "/api/stats",
         }
@@ -122,6 +132,47 @@ class TestAccountEndpoints:
     def test_delete_nonexistent(self, client):
         resp = client.delete("/api/accounts/999")
         assert resp.status_code == 404
+
+    def test_get_account_by_id(self, client):
+        client.post("/api/accounts", json={
+            "name": "Bot", "auth_token": "t", "ct0": "c", "username": "u",
+        })
+        resp = client.get("/api/accounts/1")
+        assert resp.status_code == 200
+        assert resp.json()["id"] == 1
+
+    def test_get_account_not_found(self, client):
+        resp = client.get("/api/accounts/999")
+        assert resp.status_code == 404
+
+    def test_post_tweet_direct(self, client):
+        client.post("/api/accounts", json={
+            "name": "Bot", "auth_token": "t", "ct0": "c", "username": "u",
+        })
+        with patch("routers.accounts.post_tweet", new_callable=AsyncMock) as mock_tweet:
+            from executor import ExecutionResult
+            mock_tweet.return_value = ExecutionResult(True, '{"id":"1"}', "")
+            resp = client.post("/api/accounts/1/tweet", json={"text": "Hello!"})
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+
+    def test_post_tweet_direct_account_not_found(self, client):
+        with patch("routers.accounts.post_tweet", new_callable=AsyncMock):
+            resp = client.post("/api/accounts/999/tweet", json={"text": "Hi"})
+        assert resp.status_code == 404
+
+    def test_get_account_timeline(self, client):
+        client.post("/api/accounts", json={
+            "name": "Bot", "auth_token": "t", "ct0": "c", "username": "testbot",
+        })
+        with patch("routers.accounts.get_user_tweets", new_callable=AsyncMock) as mock_tl:
+            from executor import ExecutionResult
+            mock_tl.return_value = ExecutionResult(True, '[{"id":"1","text":"hi"}]', "")
+            resp = client.get("/api/accounts/1/timeline")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["username"] == "testbot"
+        assert len(data["tweets"]) == 1
 
 
 class TestRuleEndpoints:
@@ -189,6 +240,33 @@ class TestRuleEndpoints:
         resp = client.delete("/api/rules/1")
         assert resp.status_code == 204
 
+    def test_get_rule_by_id(self, client):
+        self._create_account(client)
+        client.post("/api/rules", json={
+            "account_id": 1, "name": "R1", "trigger_type": "keyword", "action_type": "like",
+        })
+        resp = client.get("/api/rules/1")
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "R1"
+
+    def test_get_rule_not_found(self, client):
+        resp = client.get("/api/rules/999")
+        assert resp.status_code == 404
+
+    def test_run_all_rules(self, client):
+        self._create_account(client)
+        client.post("/api/rules", json={
+            "account_id": 1, "name": "R1", "trigger_type": "keyword",
+            "trigger_config": {"keywords": ["AI"]}, "action_type": "like",
+        })
+        with patch("routers.rules.run_all_rules", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = {1: 3}
+            resp = client.post("/api/rules/run-all")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["executed_total"] == 3
+        assert "1" in data["per_rule"]
+
 
 class TestScheduleEndpoints:
     def _create_account(self, client):
@@ -222,6 +300,42 @@ class TestScheduleEndpoints:
         resp = client.delete("/api/schedule/1")
         assert resp.status_code == 204
 
+    def test_get_scheduled_post_by_id(self, client):
+        self._create_account(client)
+        client.post("/api/schedule", json={
+            "account_id": 1, "content": "Hello", "scheduled_at": "2025-06-01T12:00:00",
+        })
+        resp = client.get("/api/schedule/1")
+        assert resp.status_code == 200
+        assert resp.json()["content"] == "Hello"
+
+    def test_get_scheduled_post_not_found(self, client):
+        resp = client.get("/api/schedule/999")
+        assert resp.status_code == 404
+
+    def test_patch_scheduled_post(self, client):
+        self._create_account(client)
+        client.post("/api/schedule", json={
+            "account_id": 1, "content": "Original", "scheduled_at": "2025-06-01T12:00:00",
+        })
+        resp = client.patch("/api/schedule/1", json={"content": "Updated"})
+        assert resp.status_code == 200
+        assert resp.json()["content"] == "Updated"
+
+    def test_patch_posted_returns_409(self, client):
+        from db import get_connection
+        from dependencies import get_db_path
+        self._create_account(client)
+        client.post("/api/schedule", json={
+            "account_id": 1, "content": "Post", "scheduled_at": "2025-06-01T12:00:00",
+        })
+        conn = get_connection(get_db_path())
+        conn.execute("UPDATE scheduled_posts SET status='posted' WHERE id=1")
+        conn.commit()
+        conn.close()
+        resp = client.patch("/api/schedule/1", json={"content": "Too late"})
+        assert resp.status_code == 409
+
 
 class TestMonitorEndpoints:
     def _create_account(self, client):
@@ -243,6 +357,195 @@ class TestMonitorEndpoints:
         client.post("/api/monitors", json={"account_id": 1, "keyword": "AI"})
         resp = client.get("/api/monitors")
         assert len(resp.json()) == 1
+
+    def test_get_monitor_by_id(self, client):
+        self._create_account(client)
+        client.post("/api/monitors", json={"account_id": 1, "keyword": "AI"})
+        resp = client.get("/api/monitors/1")
+        assert resp.status_code == 200
+        assert resp.json()["keyword"] == "AI"
+
+    def test_get_monitor_not_found(self, client):
+        resp = client.get("/api/monitors/999")
+        assert resp.status_code == 404
+
+    def test_update_monitor(self, client):
+        self._create_account(client)
+        client.post("/api/monitors", json={"account_id": 1, "keyword": "AI"})
+        resp = client.put("/api/monitors/1", json={"keyword": "ML"})
+        assert resp.status_code == 200
+        assert resp.json()["keyword"] == "ML"
+
+    def test_update_monitor_not_found(self, client):
+        resp = client.put("/api/monitors/999", json={"keyword": "x"})
+        assert resp.status_code == 404
+
+    def test_delete_monitor(self, client):
+        self._create_account(client)
+        client.post("/api/monitors", json={"account_id": 1, "keyword": "AI"})
+        resp = client.delete("/api/monitors/1")
+        assert resp.status_code == 204
+        assert client.get("/api/monitors/1").status_code == 404
+
+    def test_delete_monitor_not_found(self, client):
+        resp = client.delete("/api/monitors/999")
+        assert resp.status_code == 404
+
+    def test_toggle_monitor(self, client):
+        self._create_account(client)
+        client.post("/api/monitors", json={"account_id": 1, "keyword": "AI"})
+        resp = client.post("/api/monitors/1/toggle")
+        assert resp.status_code == 200
+        assert resp.json()["is_active"] is False
+
+        resp = client.post("/api/monitors/1/toggle")
+        assert resp.json()["is_active"] is True
+
+
+class TestSearchEndpoints:
+    def _create_account(self, client):
+        client.post("/api/accounts", json={
+            "name": "Bot", "auth_token": "t", "ct0": "c", "username": "u",
+        })
+
+    def test_search_returns_tweets(self, client):
+        self._create_account(client)
+        with patch("routers.search.search_tweets", new_callable=AsyncMock) as mock_search:
+            from executor import ExecutionResult
+            mock_search.return_value = ExecutionResult(
+                True, '[{"id":"1","text":"AI is great"}]', ""
+            )
+            resp = client.get("/api/search?account_id=1&q=AI")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["query"] == "AI"
+        assert data["count"] == 1
+        assert data["tweets"][0]["text"] == "AI is great"
+
+    def test_search_account_not_found(self, client):
+        resp = client.get("/api/search?account_id=999&q=AI")
+        assert resp.status_code == 404
+
+    def test_search_with_count_param(self, client):
+        self._create_account(client)
+        with patch("routers.search.search_tweets", new_callable=AsyncMock) as mock_search:
+            from executor import ExecutionResult
+            mock_search.return_value = ExecutionResult(True, "[]", "")
+            client.get("/api/search?account_id=1&q=test&count=50")
+        mock_search.assert_called_once()
+        _, call_kwargs = mock_search.call_args
+        assert mock_search.call_args[0][3] == 50
+
+    def test_search_cli_error_returns_500(self, client):
+        self._create_account(client)
+        with patch("routers.search.search_tweets", new_callable=AsyncMock) as mock_search:
+            from executor import ExecutionResult
+            mock_search.return_value = ExecutionResult(False, "", "rate limit exceeded")
+            resp = client.get("/api/search?account_id=1&q=fail")
+        assert resp.status_code == 500
+
+
+class TestHealthEndpoint:
+    def test_health_ok(self, client):
+        resp = client.get("/api/health")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["db"] == "ok"
+        assert "version" in data
+
+
+class TestUploadsEndpoints:
+    def test_list_uploads_empty(self, client):
+        resp = client.get("/api/uploads")
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 0
+        assert resp.json()["files"] == []
+
+    def test_upload_and_list(self, client):
+        import io
+        content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
+        resp = client.post(
+            "/api/uploads",
+            files={"file": ("test.png", io.BytesIO(content), "image/png")},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["filename"].endswith(".png")
+        assert data["size"] == len(content)
+
+        resp = client.get("/api/uploads")
+        assert resp.json()["total"] == 1
+
+    def test_upload_unsupported_extension(self, client):
+        import io
+        resp = client.post(
+            "/api/uploads",
+            files={"file": ("script.exe", io.BytesIO(b"data"), "application/octet-stream")},
+        )
+        assert resp.status_code == 400
+
+    def test_delete_upload(self, client):
+        import io
+        content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
+        upload_resp = client.post(
+            "/api/uploads",
+            files={"file": ("del.png", io.BytesIO(content), "image/png")},
+        )
+        filename = upload_resp.json()["filename"]
+        resp = client.delete(f"/api/uploads/{filename}")
+        assert resp.status_code == 204
+
+        resp = client.get("/api/uploads")
+        assert resp.json()["total"] == 0
+
+    def test_delete_not_found(self, client):
+        resp = client.delete("/api/uploads/nonexistent.png")
+        assert resp.status_code == 404
+
+
+class TestWebhookEndpoints:
+    def _create_account(self, client):
+        client.post("/api/accounts", json={
+            "name": "Bot", "auth_token": "t", "ct0": "c", "username": "u",
+        })
+
+    def test_webhook_tweet_success(self, client):
+        self._create_account(client)
+        with patch("routers.webhooks.post_tweet", new_callable=AsyncMock) as mock_tweet:
+            from executor import ExecutionResult
+            mock_tweet.return_value = ExecutionResult(True, '{"id":"99"}', "")
+            resp = client.post("/api/webhook/tweet", json={
+                "account_id": 1,
+                "text": "Webhook tweet!",
+            })
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+
+    def test_webhook_tweet_account_not_found(self, client):
+        resp = client.post("/api/webhook/tweet", json={
+            "account_id": 999, "text": "Hi"
+        })
+        assert resp.status_code == 404
+
+    def test_webhook_tweet_invalid_token(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", "correct_secret")
+        self._create_account(client)
+        resp = client.post("/api/webhook/tweet", json={
+            "account_id": 1, "text": "Hi", "token": "wrong_secret"
+        })
+        assert resp.status_code == 401
+
+    def test_webhook_tweet_valid_token(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", "mysecret")
+        self._create_account(client)
+        with patch("routers.webhooks.post_tweet", new_callable=AsyncMock) as mock_tweet:
+            from executor import ExecutionResult
+            mock_tweet.return_value = ExecutionResult(True, "{}", "")
+            resp = client.post("/api/webhook/tweet", json={
+                "account_id": 1, "text": "Hi", "token": "mysecret"
+            })
+        assert resp.status_code == 200
 
 
 class TestLogAndStatsEndpoints:

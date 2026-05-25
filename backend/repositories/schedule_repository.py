@@ -46,6 +46,24 @@ class ScheduledPostRepository:
         )
         return cursor.fetchall()
 
+    def get_by_id(self, post_id: int) -> dict[str, Any] | None:
+        """Return a single scheduled post row, or None."""
+        row = self._conn.execute(
+            "SELECT * FROM scheduled_posts WHERE id = ?", (post_id,)
+        ).fetchone()
+        return _parse_post_row(row) if row else None
+
+    def update(self, post_id: int, updates: dict[str, Any]) -> dict[str, Any]:
+        """Apply a partial update to a pending post and return the updated row."""
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [post_id]
+        self._conn.execute(f"UPDATE scheduled_posts SET {set_clause} WHERE id = ?", values)
+        self._conn.commit()
+        row = self._conn.execute(
+            "SELECT * FROM scheduled_posts WHERE id = ?", (post_id,)
+        ).fetchone()
+        return _parse_post_row(row)
+
     def create(
         self,
         account_id: int,

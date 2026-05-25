@@ -23,6 +23,8 @@ from actions import (
     ReplyActionHandler,
     FollowActionHandler,
     UnfollowActionHandler,
+    TweetActionHandler,
+    NotifyActionHandler,
     ActionHandler,
     ACTION_HANDLERS,
     get_action_handler,
@@ -213,7 +215,7 @@ class TestScheduleTriggerHandler:
 
 class TestActionHandlerRegistry:
     def test_all_registered_action_types(self):
-        for a in ("like", "rt", "reply", "follow", "unfollow"):
+        for a in ("like", "rt", "reply", "follow", "unfollow", "tweet", "notify"):
             assert a in ACTION_HANDLERS
 
     def test_get_action_handler_returns_instance(self):
@@ -351,3 +353,163 @@ class TestUnfollowActionHandler:
                 "t", "c", {}, {"username": "byeuser"}
             )
         assert ok is True
+
+
+# ---------------------------------------------------------------------------
+# TweetActionHandler
+# ---------------------------------------------------------------------------
+
+class TestTweetActionHandler:
+    handler = TweetActionHandler()
+
+    @pytest.mark.asyncio
+    async def test_no_text_returns_error(self):
+        ok, err = await self.handler.execute("t", "c", {}, {})
+        assert ok is False
+        assert "text" in err
+
+    @pytest.mark.asyncio
+    async def test_success(self):
+        mock_result = AsyncMock()
+        mock_result.success = True
+        with patch("actions.post_tweet", return_value=mock_result):
+            ok, err = await self.handler.execute("t", "c", {"text": "Hello!"}, {})
+        assert ok is True
+        assert err == ""
+
+    @pytest.mark.asyncio
+    async def test_failure(self):
+        mock_result = AsyncMock()
+        mock_result.success = False
+        mock_result.error = "rate limited"
+        with patch("actions.post_tweet", return_value=mock_result):
+            ok, err = await self.handler.execute("t", "c", {"text": "Hi"}, {})
+        assert ok is False
+        assert err == "rate limited"
+
+    @pytest.mark.asyncio
+    async def test_template_substitution(self):
+        mock_result = AsyncMock()
+        mock_result.success = True
+        tweet = {"id": "99", "text": "original tweet", "username": "someuser"}
+        with patch("actions.post_tweet", return_value=mock_result) as mock_post:
+            await self.handler.execute(
+                "t", "c",
+                {"text": "検知: {tweet_text} by @{username}"},
+                tweet,
+            )
+        call_args = mock_post.call_args
+        posted_text = call_args[0][2]
+        assert "original tweet" in posted_text
+        assert "someuser" in posted_text
+
+    @pytest.mark.asyncio
+    async def test_template_with_tweet_url(self):
+        mock_result = AsyncMock()
+        mock_result.success = True
+        tweet = {"id": "42", "text": "hi", "username": "bob"}
+        with patch("actions.post_tweet", return_value=mock_result) as mock_post:
+            await self.handler.execute("t", "c", {"text": "{tweet_url}"}, tweet)
+        posted_text = mock_post.call_args[0][2]
+        assert "twitter.com/bob/status/42" in posted_text
+
+
+# ---------------------------------------------------------------------------
+# NotifyActionHandler
+# ---------------------------------------------------------------------------
+
+class TestNotifyActionHandler:
+    handler = NotifyActionHandler()
+
+    @pytest.mark.asyncio
+    async def test_no_url_returns_error(self):
+        ok, err = await self.handler.execute("t", "c", {}, {})
+        assert ok is False
+        assert "url" in err
+
+    @pytest.mark.asyncio
+    async def test_discord_payload_format(self):
+        import httpx
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 204
+
+        with patch("actions.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client_cls.return_value = mock_client
+
+            ok, err = await self.handler.execute(
+                "t", "c",
+                {"url": "https://discord.com/api/webhooks/x", "type": "discord"},
+                {"id": "1", "text": "test tweet", "username": "user"},
+            )
+
+        assert ok is True
+        post_call = mock_client.post.call_args
+        payload = post_call[1]["json"]
+        assert "content" in payload
+
+    @pytest.mark.asyncio
+    async def test_generic_webhook_payload_format(self):
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 200
+
+        with patch("actions.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client_cls.return_value = mock_client
+
+            ok, err = await self.handler.execute(
+                "t", "c",
+                {"url": "http://myservice/notify", "type": "webhook"},
+                {"id": "1", "text": "hi", "username": "u"},
+            )
+
+        assert ok is True
+        post_call = mock_client.post.call_args
+        payload = post_call[1]["json"]
+        assert "message" in payload
+
+    @pytest.mark.asyncio
+    async def test_http_error_returns_failure(self):
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 500
+
+        with patch("actions.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client_cls.return_value = mock_client
+
+            ok, err = await self.handler.execute(
+                "t", "c",
+                {"url": "http://bad-server/notify"},
+                {"id": "1", "text": "hi", "username": "u"},
+            )
+
+        assert ok is False
+        assert "500" in err
+
+    @pytest.mark.asyncio
+    async def test_request_error_returns_failure(self):
+        import httpx
+        with patch("actions.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
+            mock_client_cls.return_value = mock_client
+
+            ok, err = await self.handler.execute(
+                "t", "c",
+                {"url": "http://unreachable/notify"},
+                {"id": "1", "text": "hi", "username": "u"},
+            )
+
+        assert ok is False
+        assert "failed" in err

@@ -5,7 +5,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 
 from dependencies import get_db
-from models import ScheduledPostCreate, ScheduledPostResponse
+from models import ScheduledPostCreate, ScheduledPostResponse, ScheduledPostUpdate
 from repositories import AccountRepository, ScheduledPostRepository
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
@@ -37,6 +37,41 @@ def create_scheduled_post(
         repeat_config=data.repeat_config,
         image_paths=data.image_paths,
     )
+
+
+@router.get("/{post_id}", response_model=ScheduledPostResponse)
+def get_scheduled_post(
+    post_id: int,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    repo = ScheduledPostRepository(conn)
+    row = repo.get_by_id(post_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Scheduled post not found")
+    return row
+
+
+@router.patch("/{post_id}", response_model=ScheduledPostResponse)
+def update_scheduled_post(
+    post_id: int,
+    data: ScheduledPostUpdate,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    repo = ScheduledPostRepository(conn)
+    existing = repo.get_by_id(post_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Scheduled post not found")
+    if existing.get("status") != "pending":
+        raise HTTPException(status_code=409, detail="Only pending posts can be updated")
+
+    updates: dict = {}
+    if data.content is not None:
+        updates["content"] = data.content
+    if data.scheduled_at is not None:
+        updates["scheduled_at"] = data.scheduled_at.isoformat()
+    if not updates:
+        return existing
+    return repo.update(post_id, updates)
 
 
 @router.delete("/{post_id}", status_code=204)

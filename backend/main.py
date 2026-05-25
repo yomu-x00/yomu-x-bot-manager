@@ -10,11 +10,11 @@ load_dotenv()
 
 import logging
 import os
-import uuid
+import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,12 +29,14 @@ from routers import (
     schedule_router,
     monitors_router,
     logs_router,
+    webhooks_router,
+    uploads_router,
+    search_router,
 )
 from scheduler import process_pending_posts
 
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = Path(os.environ.get("DATABASE_PATH", "/app/data/twitter.db")).parent / "uploads"
 FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
 
 
@@ -81,9 +83,10 @@ def _check_env() -> None:
 async def lifespan(app: FastAPI):
     """Application lifespan: initialise DB and start background scheduler."""
     _check_env()
-    get_db_path().parent.mkdir(parents=True, exist_ok=True)
-    init_db(get_db_path())
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    db_path = get_db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    init_db(db_path)
+    (db_path.parent / "uploads").mkdir(parents=True, exist_ok=True)
     sync_account_jobs()
     scheduler.add_job(_scheduler_job, "interval", minutes=1, id="scheduler")
     scheduler.start()
@@ -113,15 +116,26 @@ def create_app() -> FastAPI:
     application.include_router(schedule_router)
     application.include_router(monitors_router)
     application.include_router(logs_router)
+    application.include_router(webhooks_router)
+    application.include_router(uploads_router)
+    application.include_router(search_router)
 
-    @application.post("/api/uploads")
-    async def upload_image(file: UploadFile = File(...)):
-        ext = Path(file.filename).suffix if file.filename else ""
-        filename = f"{uuid.uuid4().hex}{ext}"
-        dest = UPLOAD_DIR / filename
-        content = await file.read()
-        dest.write_bytes(content)
-        return {"path": str(dest)}
+    @application.get("/api/health", tags=["system"])
+    def health_check():
+        """サーバーとDBの死活確認。"""
+        db_ok = False
+        try:
+            conn = get_connection(get_db_path())
+            conn.execute("SELECT 1")
+            conn.close()
+            db_ok = True
+        except Exception:
+            pass
+        return {
+            "status": "ok" if db_ok else "degraded",
+            "version": "0.1.0",
+            "db": "ok" if db_ok else "error",
+        }
 
     # フロントエンド静的ファイル配信（dist/ が存在する場合のみ）
     if FRONTEND_DIST.is_dir():

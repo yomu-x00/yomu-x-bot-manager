@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS rules (
     is_active BOOLEAN NOT NULL DEFAULT 1,
     trigger_type TEXT NOT NULL CHECK(trigger_type IN ('keyword', 'user', 'engagement', 'schedule')),
     trigger_config JSON NOT NULL DEFAULT '{}',
-    action_type TEXT NOT NULL CHECK(action_type IN ('rt', 'like', 'reply', 'follow', 'unfollow')),
+    action_type TEXT NOT NULL CHECK(action_type IN ('rt', 'like', 'reply', 'follow', 'unfollow', 'tweet', 'notify')),
     action_config JSON NOT NULL DEFAULT '{}',
     cooldown_minutes INTEGER NOT NULL DEFAULT 60,
     daily_limit INTEGER NOT NULL DEFAULT 50,
@@ -79,7 +79,7 @@ def get_db_path() -> Path:
 def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     """Create a new database connection with WAL mode and foreign keys enabled."""
     path = db_path or get_db_path()
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -129,6 +129,31 @@ def init_db(db_path: Path | None = None) -> None:
             conn.execute("DROP TABLE scheduled_posts")
             conn.execute("ALTER TABLE scheduled_posts_new RENAME TO scheduled_posts")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_scheduled_posts_status ON scheduled_posts(status, scheduled_at)")
+
+        # migrate: expand action_type CHECK to include tweet and notify
+        row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='rules'").fetchone()
+        if row and ("'tweet'" not in row[0] or "'notify'" not in row[0]):
+            conn.execute("DROP TABLE IF EXISTS rules_new")
+            conn.execute("""CREATE TABLE rules_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                trigger_type TEXT NOT NULL CHECK(trigger_type IN ('keyword', 'user', 'engagement', 'schedule')),
+                trigger_config JSON NOT NULL DEFAULT '{}',
+                action_type TEXT NOT NULL CHECK(action_type IN ('rt', 'like', 'reply', 'follow', 'unfollow', 'tweet', 'notify')),
+                action_config JSON NOT NULL DEFAULT '{}',
+                cooldown_minutes INTEGER NOT NULL DEFAULT 60,
+                daily_limit INTEGER NOT NULL DEFAULT 50,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""")
+            conn.execute("""INSERT INTO rules_new
+                SELECT id, account_id, name, is_active, trigger_type, trigger_config,
+                       action_type, action_config, cooldown_minutes, daily_limit, created_at
+                FROM rules""")
+            conn.execute("DROP TABLE rules")
+            conn.execute("ALTER TABLE rules_new RENAME TO rules")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_rules_account_id ON rules(account_id)")
 
         conn.commit()
     finally:

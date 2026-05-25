@@ -83,6 +83,11 @@ class ScheduledPostCreate(BaseModel):
     image_paths: list[str] = Field(default_factory=list)
 
 
+class ScheduledPostUpdate(BaseModel):
+    content: str | None = None
+    scheduled_at: datetime | None = None
+
+
 class ScheduledPostResponse(BaseModel):
     id: int
     account_id: int
@@ -103,6 +108,13 @@ class MonitorCreate(BaseModel):
     notify_discord: bool = False
     discord_webhook: str | None = None
     is_active: bool = True
+
+
+class MonitorUpdate(BaseModel):
+    keyword: str | None = None
+    notify_discord: bool | None = None
+    discord_webhook: str | None = None
+    is_active: bool | None = None
 
 
 class MonitorResponse(BaseModel):
@@ -126,6 +138,22 @@ class RuleLogResponse(BaseModel):
     status: str
     reason: str | None
     executed_at: datetime
+
+
+# --- Twitter Direct ---
+
+class TweetPostRequest(BaseModel):
+    text: str
+    images: list[str] | None = None
+
+
+# --- Webhook ---
+
+class WebhookTweetRequest(BaseModel):
+    account_id: int
+    text: str
+    token: str | None = None
+    images: list[str] | None = None
 
 
 # --- Stats ---

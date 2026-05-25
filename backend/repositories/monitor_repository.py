@@ -15,6 +15,13 @@ class MonitorRepository:
         cursor = self._conn.execute("SELECT * FROM monitors ORDER BY id")
         return [dict(row) for row in cursor.fetchall()]
 
+    def get_by_id(self, monitor_id: int) -> dict[str, Any] | None:
+        """Return a single monitor row, or None."""
+        row = self._conn.execute(
+            "SELECT * FROM monitors WHERE id = ?", (monitor_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
     def create(
         self,
         account_id: int,
@@ -35,3 +42,33 @@ class MonitorRepository:
             "SELECT * FROM monitors WHERE id = ?", (cursor.lastrowid,)
         ).fetchone()
         return dict(row)
+
+    def update(self, monitor_id: int, updates: dict[str, Any]) -> dict[str, Any]:
+        """Apply a partial update and return the updated row."""
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [monitor_id]
+        self._conn.execute(f"UPDATE monitors SET {set_clause} WHERE id = ?", values)
+        self._conn.commit()
+        row = self._conn.execute(
+            "SELECT * FROM monitors WHERE id = ?", (monitor_id,)
+        ).fetchone()
+        return dict(row)
+
+    def toggle_active(self, monitor_id: int, current_state: bool) -> dict[str, Any]:
+        """Flip is_active and return the updated row."""
+        self._conn.execute(
+            "UPDATE monitors SET is_active = ? WHERE id = ?", (not current_state, monitor_id)
+        )
+        self._conn.commit()
+        row = self._conn.execute(
+            "SELECT * FROM monitors WHERE id = ?", (monitor_id,)
+        ).fetchone()
+        return dict(row)
+
+    def delete(self, monitor_id: int) -> int:
+        """Delete a monitor and return the number of deleted rows."""
+        result = self._conn.execute(
+            "DELETE FROM monitors WHERE id = ?", (monitor_id,)
+        )
+        self._conn.commit()
+        return result.rowcount

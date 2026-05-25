@@ -8,6 +8,7 @@ services:
     environment:
       - DATABASE_PATH=/app/data/twitter.db
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
     ports:
       - "8000:8000"
 

@@ -80,12 +80,12 @@ async def test_run_cli_timeout():
 
 @pytest.mark.asyncio
 async def test_search_tweets():
-    """search_tweets should call CLI with correct args."""
+    """search_tweets should call CLI with correct args including -t Latest."""
     with patch("executor.run_cli", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = ExecutionResult(True, "[]", "")
         await search_tweets("tok", "ct0", "AI", count=10)
         mock_run.assert_called_once_with(
-            ["search", "AI", "--max", "10", "--json"],
+            ["search", "AI", "-t", "Latest", "--max", "10", "--json"],
             env={"TWITTER_AUTH_TOKEN": "tok", "TWITTER_CT0": "ct0"},
         )
 
@@ -96,7 +96,7 @@ async def test_like_tweet():
         mock_run.return_value = ExecutionResult(True, "", "")
         await like_tweet("tok", "ct0", "12345")
         mock_run.assert_called_once_with(
-            ["like", "12345"],
+            ["like", "12345", "--json"],
             env={"TWITTER_AUTH_TOKEN": "tok", "TWITTER_CT0": "ct0"},
         )
 
@@ -107,7 +107,7 @@ async def test_retweet():
         mock_run.return_value = ExecutionResult(True, "", "")
         await retweet("tok", "ct0", "12345")
         mock_run.assert_called_once_with(
-            ["retweet", "12345"],
+            ["retweet", "12345", "--json"],
             env={"TWITTER_AUTH_TOKEN": "tok", "TWITTER_CT0": "ct0"},
         )
 
@@ -118,7 +118,18 @@ async def test_post_tweet():
         mock_run.return_value = ExecutionResult(True, "", "")
         await post_tweet("tok", "ct0", "Hello world")
         mock_run.assert_called_once_with(
-            ["post", "Hello world"],
+            ["post", "Hello world", "--json"],
+            env={"TWITTER_AUTH_TOKEN": "tok", "TWITTER_CT0": "ct0"},
+        )
+
+
+@pytest.mark.asyncio
+async def test_post_tweet_with_images():
+    with patch("executor.run_cli", new_callable=AsyncMock) as mock_run:
+        mock_run.return_value = ExecutionResult(True, "", "")
+        await post_tweet("tok", "ct0", "Hello", images=["/tmp/a.png", "/tmp/b.png"])
+        mock_run.assert_called_once_with(
+            ["post", "Hello", "--image", "/tmp/a.png", "--image", "/tmp/b.png", "--json"],
             env={"TWITTER_AUTH_TOKEN": "tok", "TWITTER_CT0": "ct0"},
         )
 

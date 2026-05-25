@@ -1,15 +1,16 @@
 """Account management API routes (Single Responsibility Principle)."""
 
+import json
 import sqlite3
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from crypto import encrypt, decrypt
 from dependencies import get_db, get_key
 from jobs import sync_account_jobs
-from models import AccountCreate, AccountResponse, AccountUpdate
+from models import AccountCreate, AccountResponse, AccountUpdate, TweetPostRequest
 from repositories import AccountRepository
-from executor import verify_credentials
+from executor import verify_credentials, post_tweet, get_user_tweets
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
@@ -37,6 +38,18 @@ def create_account(
     )
     sync_account_jobs()
     return result
+
+
+@router.get("/{account_id}", response_model=AccountResponse)
+def get_account(
+    account_id: int,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    repo = AccountRepository(conn)
+    row = repo.get_by_id(account_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return row
 
 
 @router.put("/{account_id}", response_model=AccountResponse)
@@ -81,6 +94,57 @@ def delete_account(
     if repo.delete(account_id) == 0:
         raise HTTPException(status_code=404, detail="Account not found")
     sync_account_jobs()
+
+
+@router.post("/{account_id}/tweet")
+async def post_tweet_direct(
+    account_id: int,
+    data: TweetPostRequest,
+    conn: sqlite3.Connection = Depends(get_db),
+    key: bytes = Depends(get_key),
+):
+    """指定アカウントで即時ツイートを投稿する。"""
+    repo = AccountRepository(conn)
+    row = repo.get_credentials(account_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    auth_token = decrypt(row["auth_token"], key)
+    ct0 = decrypt(row["ct0"], key)
+    result = await post_tweet(auth_token, ct0, data.text, data.images)
+    if not result.success:
+        raise HTTPException(status_code=500, detail=result.error)
+    try:
+        output = json.loads(result.output)
+    except (json.JSONDecodeError, ValueError):
+        output = result.output
+    return {"status": "ok", "tweet": output}
+
+
+@router.get("/{account_id}/timeline")
+async def get_account_timeline(
+    account_id: int,
+    count: int = Query(default=20, ge=1, le=100),
+    conn: sqlite3.Connection = Depends(get_db),
+    key: bytes = Depends(get_key),
+):
+    """指定アカウントの最近のツイート一覧を返す。"""
+    repo = AccountRepository(conn)
+    account = repo.get_by_id(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    row = repo.get_credentials(account_id)
+    auth_token = decrypt(row["auth_token"], key)
+    ct0 = decrypt(row["ct0"], key)
+    result = await get_user_tweets(auth_token, ct0, account["username"], count)
+    if not result.success:
+        raise HTTPException(status_code=500, detail=result.error)
+    try:
+        tweets = json.loads(result.output)
+    except (json.JSONDecodeError, ValueError):
+        tweets = []
+    return {"account_id": account_id, "username": account["username"], "tweets": tweets}
 
 
 @router.post("/{account_id}/verify")

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from dependencies import get_db, get_key
 from models import RuleCreate, RuleResponse, RuleUpdate
 from repositories import AccountRepository, RuleRepository
-from worker import process_rule
+from worker import process_rule, run_all_rules
 
 router = APIRouter(prefix="/api/rules", tags=["rules"])
 
@@ -42,6 +42,29 @@ def create_rule(
         cooldown_minutes=data.cooldown_minutes,
         daily_limit=data.daily_limit,
     )
+
+
+@router.post("/run-all")
+async def run_all(
+    conn: sqlite3.Connection = Depends(get_db),
+    key: bytes = Depends(get_key),
+):
+    """アクティブな全ルールを即時実行する。"""
+    results = await run_all_rules(conn, key)
+    total = sum(results.values())
+    return {"executed_total": total, "per_rule": results}
+
+
+@router.get("/{rule_id}", response_model=RuleResponse)
+def get_rule(
+    rule_id: int,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    repo = RuleRepository(conn)
+    row = repo.get_by_id(rule_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    return row
 
 
 @router.put("/{rule_id}", response_model=RuleResponse)
