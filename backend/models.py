@@ -88,6 +88,11 @@ class ScheduledPostUpdate(BaseModel):
     scheduled_at: datetime | None = None
 
 
+class ScheduledPostBulkResult(BaseModel):
+    created: int
+    errors: list[dict]
+
+
 class ScheduledPostResponse(BaseModel):
     id: int
     account_id: int

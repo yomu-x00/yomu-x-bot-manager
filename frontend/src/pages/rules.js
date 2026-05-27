@@ -6,7 +6,7 @@ const ACTION_TYPES = ["rt", "like", "reply", "follow", "unfollow"];
 function ruleFormHtml(rule = null, accounts = []) {
   return `
     <div class="form-group"><label>Account</label>
-      <select id="f-account">${accounts.map((a) => `<option value="${a.id}" ${rule?.account_id === a.id ? "selected" : ""}>${a.name} (@${a.username})</option>`).join("")}</select>
+      <select id="f-account">${accounts.map((a) => `<option value="${a.id}" ${(rule?.account_id ?? accountId) === a.id ? "selected" : ""}>${a.name} (@${a.username})</option>`).join("")}</select>
     </div>
     <div class="form-group"><label>Rule Name</label><input id="f-name" value="${rule?.name || ""}"></div>
     <div class="form-row">
@@ -52,7 +52,7 @@ function showModal(title, bodyHtml, onSave) {
   overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
 }
 
-export async function renderRules(container) {
+export async function renderRules(container, accountId) {
   container.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <h2>Rules</h2>
@@ -69,7 +69,7 @@ export async function renderRules(container) {
 
   async function loadRules() {
     try {
-      const rules = await api.getRules();
+      const rules = await api.getRules(accountId);
       const tbody = document.getElementById("rules-body");
       if (rules.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" class="empty-state">No rules</td></tr>`;

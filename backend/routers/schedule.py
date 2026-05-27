@@ -5,7 +5,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 
 from dependencies import get_db
-from models import ScheduledPostCreate, ScheduledPostResponse, ScheduledPostUpdate
+from models import ScheduledPostBulkResult, ScheduledPostCreate, ScheduledPostResponse, ScheduledPostUpdate
 from repositories import AccountRepository, ScheduledPostRepository
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
@@ -72,6 +72,38 @@ def update_scheduled_post(
     if not updates:
         return existing
     return repo.update(post_id, updates)
+
+
+@router.post("/bulk", response_model=ScheduledPostBulkResult, status_code=201)
+def bulk_create_scheduled_posts(
+    posts: list[ScheduledPostCreate],
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    if not posts:
+        raise HTTPException(status_code=400, detail="No posts provided")
+
+    account_repo = AccountRepository(conn)
+    repo = ScheduledPostRepository(conn)
+
+    created, errors = [], []
+    for i, data in enumerate(posts):
+        if not account_repo.get_by_id(data.account_id):
+            errors.append({"index": i, "reason": f"Account {data.account_id} not found"})
+            continue
+        try:
+            row = repo.create(
+                account_id=data.account_id,
+                content=data.content,
+                scheduled_at=data.scheduled_at.isoformat(),
+                repeat_type=data.repeat_type,
+                repeat_config=data.repeat_config,
+                image_paths=data.image_paths,
+            )
+            created.append(row)
+        except Exception as e:
+            errors.append({"index": i, "reason": str(e)})
+
+    return {"created": len(created), "errors": errors}
 
 
 @router.delete("/{post_id}", status_code=204)

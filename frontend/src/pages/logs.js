@@ -1,6 +1,6 @@
 import { api } from "../api.js";
 
-export async function renderLogs(container) {
+export async function renderLogs(container, accountId) {
   container.innerHTML = `
     <h2>Execution Logs</h2>
     <div class="filter-bar">
@@ -20,6 +20,7 @@ export async function renderLogs(container) {
 
   async function loadLogs(append = false) {
     const params = { limit, offset };
+    if (accountId) params.account_id = accountId;
     const status = document.getElementById("filter-status").value;
     const action = document.getElementById("filter-action").value;
     if (status) params.status = status;

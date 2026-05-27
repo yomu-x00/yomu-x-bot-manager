@@ -1,25 +1,27 @@
 import { api } from "../api.js";
 
-export async function renderDashboard(container) {
+export async function renderDashboard(container, accountId) {
   container.innerHTML = `<h2>Dashboard</h2><div class="card-grid" id="stats-grid"></div>
     <div class="card"><h3>Recent Logs</h3><div class="log-stream" id="log-stream"><div class="empty-state">Loading...</div></div></div>`;
 
   try {
-    const stats = await api.getStats();
+    const stats = await api.getStats(accountId);
     document.getElementById("stats-grid").innerHTML = `
-      <div class="stat-card"><div class="value">${stats.active_accounts}</div><div class="label">Active Accounts</div></div>
       <div class="stat-card"><div class="value">${stats.active_rules}</div><div class="label">Active Rules</div></div>
       <div class="stat-card"><div class="value">${stats.pending_posts}</div><div class="label">Pending Posts</div></div>
       <div class="stat-card"><div class="value">${stats.today_executions}</div><div class="label">Today Executions</div></div>
       <div class="stat-card"><div class="value">${stats.today_success}</div><div class="label">Success</div></div>
       <div class="stat-card"><div class="value">${stats.today_failed}</div><div class="label">Failed</div></div>
+      <div class="stat-card"><div class="value">${stats.today_skipped}</div><div class="label">Skipped</div></div>
     `;
   } catch {
     document.getElementById("stats-grid").innerHTML = `<div class="empty-state">Failed to load stats</div>`;
   }
 
   try {
-    const logs = await api.getLogs({ limit: 20 });
+    const params = { limit: 20 };
+    if (accountId) params.account_id = accountId;
+    const logs = await api.getLogs(params);
     const stream = document.getElementById("log-stream");
     if (logs.length === 0) {
       stream.innerHTML = `<div class="empty-state">No recent logs</div>`;

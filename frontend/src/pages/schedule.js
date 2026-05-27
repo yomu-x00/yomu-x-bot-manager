@@ -29,11 +29,160 @@ function showModal(title, bodyHtml, onSave) {
   overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
 }
 
-export async function renderSchedule(container) {
+const CSV_TEMPLATE = `account_id,content,scheduled_at,repeat_type
+1,ツイート内容1,2026-06-01 09:00,none
+1,ツイート内容2,2026-06-02 12:00,none
+1,毎日投稿,2026-06-03 18:00,daily`;
+
+function parseCsv(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return { rows: [], error: "ヘッダー行とデータ行が必要です" };
+
+  const headers = lines[0].split(",").map((h) => h.trim());
+  const required = ["content", "scheduled_at"];
+  for (const r of required) {
+    if (!headers.includes(r)) return { rows: [], error: `必須カラム "${r}" がありません` };
+  }
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    // Simple CSV split (handles quoted fields with commas)
+    const values = lines[i].match(/("(?:[^"]|"")*"|[^,]*)/g).filter((_, j) => j % 2 === 0);
+    const row = {};
+    headers.forEach((h, idx) => {
+      row[h] = (values[idx] || "").replace(/^"|"$/g, "").replace(/""/g, '"').trim();
+    });
+    rows.push({ ...row, _line: i + 1 });
+  }
+  return { rows, error: null };
+}
+
+function validateCsvRows(rows, accounts) {
+  return rows.map((row) => {
+    const errors = [];
+    if (!row.content) errors.push("content が空");
+    const dt = new Date(row.scheduled_at);
+    if (!row.scheduled_at || isNaN(dt)) errors.push("scheduled_at が無効な日時");
+    const accountId = Number(row.account_id);
+    if (row.account_id && !accounts.find((a) => a.id === accountId)) errors.push(`account_id=${row.account_id} が存在しない`);
+    return { ...row, _errors: errors };
+  });
+}
+
+function showCsvImportModal(accounts, onImport) {
+  const defaultAccountId = accounts[0]?.id ?? 1;
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:780px;width:90vw">
+      <h3>CSV 一括インポート</h3>
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        <input id="csv-file" type="file" accept=".csv,text/csv" style="flex:1">
+        <button class="btn" id="csv-template">テンプレDL</button>
+      </div>
+      <div class="form-group">
+        <label style="font-size:12px;color:#888">
+          CSVカラム: <code>account_id</code>（省略時=${defaultAccountId}）, <code>content</code>*, <code>scheduled_at</code>* (YYYY-MM-DD HH:MM), <code>repeat_type</code>（none/daily/weekly）
+        </label>
+      </div>
+      <div id="csv-preview" style="display:none">
+        <div id="csv-summary" style="margin-bottom:8px;font-size:13px"></div>
+        <div style="max-height:300px;overflow-y:auto">
+          <table style="font-size:12px;width:100%">
+            <thead><tr><th>#</th><th>account</th><th>content</th><th>scheduled_at</th><th>repeat</th><th>状態</th></tr></thead>
+            <tbody id="csv-rows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="csv-cancel">キャンセル</button>
+        <button class="btn btn-primary" id="csv-import" disabled>インポート</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  let parsedRows = [];
+
+  overlay.querySelector("#csv-cancel").onclick = () => overlay.remove();
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelector("#csv-template").onclick = () => {
+    const blob = new Blob([CSV_TEMPLATE], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "schedule_template.csv";
+    a.click();
+  };
+
+  overlay.querySelector("#csv-file").onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const { rows, error } = parseCsv(ev.target.result);
+      const preview = overlay.querySelector("#csv-preview");
+      const summary = overlay.querySelector("#csv-summary");
+      const tbody = overlay.querySelector("#csv-rows");
+      const importBtn = overlay.querySelector("#csv-import");
+
+      if (error) {
+        preview.style.display = "none";
+        importBtn.disabled = true;
+        alert(`CSV エラー: ${error}`);
+        return;
+      }
+
+      parsedRows = validateCsvRows(rows, accounts);
+      const validCount = parsedRows.filter((r) => r._errors.length === 0).length;
+      const errorCount = parsedRows.length - validCount;
+
+      summary.innerHTML = `<strong>${parsedRows.length} 件</strong> 読み込み — ✅ ${validCount} 件登録可 ${errorCount ? `/ ⚠️ ${errorCount} 件エラー` : ""}`;
+      tbody.innerHTML = parsedRows.map((row) => {
+        const ok = row._errors.length === 0;
+        const accountId = Number(row.account_id) || defaultAccountId;
+        const acct = accounts.find((a) => a.id === accountId);
+        return `<tr style="${ok ? "" : "color:#e55;background:#fff0f0"}">
+          <td style="padding:2px 6px">${row._line}</td>
+          <td style="padding:2px 6px">${acct ? `@${acct.username}` : row.account_id || defaultAccountId}</td>
+          <td style="padding:2px 6px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.content}</td>
+          <td style="padding:2px 6px;white-space:nowrap">${row.scheduled_at}</td>
+          <td style="padding:2px 6px">${row.repeat_type || "none"}</td>
+          <td style="padding:2px 6px">${ok ? "✅" : "⚠️ " + row._errors.join(", ")}</td>
+        </tr>`;
+      }).join("");
+
+      preview.style.display = "";
+      importBtn.disabled = validCount === 0;
+    };
+    reader.readAsText(file);
+  };
+
+  overlay.querySelector("#csv-import").onclick = async () => {
+    const defaultAccountId = accounts[0]?.id ?? 1;
+    const validPosts = parsedRows
+      .filter((r) => r._errors.length === 0)
+      .map((r) => ({
+        account_id: Number(r.account_id) || defaultAccountId,
+        content: r.content,
+        scheduled_at: new Date(r.scheduled_at).toISOString(),
+        repeat_type: r.repeat_type || "none",
+        repeat_config: {},
+        image_paths: [],
+      }));
+    await onImport(validPosts);
+    overlay.remove();
+  };
+}
+
+export async function renderSchedule(container, accountId) {
   container.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <h2>Scheduled Posts</h2>
-      <button class="btn btn-primary" id="add-post">+ Schedule Post</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="import-csv">CSV インポート</button>
+        <button class="btn btn-primary" id="add-post">+ Schedule Post</button>
+      </div>
     </div>
     <div class="filter-bar">
       <select id="filter-status"><option value="">All</option><option value="pending">Pending</option><option value="posted">Posted</option><option value="failed">Failed</option></select>
@@ -49,7 +198,8 @@ export async function renderSchedule(container) {
 
   async function loadPosts(status) {
     try {
-      const posts = await api.getScheduledPosts(status || undefined);
+      const allPosts = await api.getScheduledPosts(status || undefined);
+      const posts = accountId ? allPosts.filter((p) => p.account_id === accountId) : allPosts;
       const tbody = document.getElementById("posts-body");
       if (posts.length === 0) {
         tbody.innerHTML = `<tr><td colspan="5" class="empty-state">No scheduled posts</td></tr>`;
@@ -81,11 +231,25 @@ export async function renderSchedule(container) {
 
   document.getElementById("filter-status").onchange = (e) => loadPosts(e.target.value);
 
+  document.getElementById("import-csv").onclick = () => {
+    if (accounts.length === 0) { alert("Please add an account first"); return; }
+    showCsvImportModal(accounts, async (posts) => {
+      try {
+        const result = await api.bulkCreateScheduledPosts(posts);
+        const msg = `${result.created} 件登録しました${result.errors.length ? `（${result.errors.length} 件エラー）` : ""}`;
+        alert(msg);
+        loadPosts(document.getElementById("filter-status").value);
+      } catch (e) {
+        alert(`インポート失敗: ${e.message}`);
+      }
+    });
+  };
+
   document.getElementById("add-post").onclick = () => {
     if (accounts.length === 0) { alert("Please add an account first"); return; }
     showModal("Schedule Post", `
       <div class="form-group"><label>Account</label>
-        <select id="f-account">${accounts.map((a) => `<option value="${a.id}">${a.name} (@${a.username})</option>`).join("")}</select>
+        <select id="f-account">${accounts.map((a) => `<option value="${a.id}" ${a.id === accountId ? "selected" : ""}>${a.name} (@${a.username})</option>`).join("")}</select>
       </div>
       <div class="form-group"><label>Content</label><textarea id="f-content" rows="4"></textarea></div>
       <div class="form-group"><label>Images (max 4)</label><input id="f-images" type="file" accept="image/*" multiple></div>

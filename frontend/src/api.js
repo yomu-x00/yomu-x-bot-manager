@@ -46,6 +46,7 @@ export const api = {
   // Schedule
   getScheduledPosts: (status) => request(`/schedule${status ? `?status=${status}` : ""}`),
   createScheduledPost: (data) => request("/schedule", { method: "POST", body: data }),
+  bulkCreateScheduledPosts: (posts) => request("/schedule/bulk", { method: "POST", body: posts }),
   deleteScheduledPost: (id) => request(`/schedule/${id}`, { method: "DELETE" }),
   uploadImage: async (file) => {
     const form = new FormData();
@@ -64,5 +65,5 @@ export const api = {
     const qs = new URLSearchParams(params).toString();
     return request(`/logs${qs ? `?${qs}` : ""}`);
   },
-  getStats: () => request("/stats"),
+  getStats: (accountId) => request(`/stats${accountId ? `?account_id=${accountId}` : ""}`),
 };

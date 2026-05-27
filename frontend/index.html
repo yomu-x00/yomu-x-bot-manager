@@ -65,6 +65,34 @@
       border-right: 3px solid var(--primary);
     }
 
+    .account-bar {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+
+    .account-bar select {
+      width: 100%;
+      padding: 8px 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .account-bar select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .sidebar-sep {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 8px 0;
+    }
+
     .main {
       flex: 1;
       padding: 24px 32px;
@@ -311,12 +339,18 @@
   <div class="app">
     <nav class="sidebar">
       <h1>Bot Manager</h1>
+      <div class="account-bar">
+        <select id="account-selector">
+          <option value="">Loading...</option>
+        </select>
+      </div>
       <a href="#dashboard" class="active" data-page="dashboard">Dashboard</a>
-      <a href="#accounts" data-page="accounts">Accounts</a>
       <a href="#rules" data-page="rules">Rules</a>
       <a href="#schedule" data-page="schedule">Schedule</a>
       <a href="#monitors" data-page="monitors">Monitors</a>
       <a href="#logs" data-page="logs">Logs</a>
+      <hr class="sidebar-sep">
+      <a href="#accounts" data-page="accounts">Accounts</a>
     </nav>
     <main class="main" id="app"></main>
   </div>

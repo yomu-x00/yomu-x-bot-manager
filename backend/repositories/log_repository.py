@@ -87,13 +87,18 @@ class LogRepository:
             return datetime.fromisoformat(row[0])
         return None
 
-    def get_today_stats(self, today_iso: str) -> dict[str, int]:
-        """Return status counts for today's executions."""
-        rows = self._conn.execute(
-            """SELECT status, COUNT(*) as cnt FROM rule_logs
-            WHERE date(executed_at) = ? GROUP BY status""",
-            (today_iso,),
-        ).fetchall()
+    def get_today_stats(self, today_iso: str, account_id: int | None = None) -> dict[str, int]:
+        """Return status counts for today's executions, optionally filtered by account."""
+        if account_id:
+            rows = self._conn.execute(
+                "SELECT status, COUNT(*) as cnt FROM rule_logs WHERE date(executed_at) = ? AND account_id = ? GROUP BY status",
+                (today_iso, account_id),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT status, COUNT(*) as cnt FROM rule_logs WHERE date(executed_at) = ? GROUP BY status",
+                (today_iso,),
+            ).fetchall()
         stats: dict[str, int] = {"success": 0, "failed": 0, "skipped": 0}
         for row in rows:
             stats[row["status"]] = row["cnt"]

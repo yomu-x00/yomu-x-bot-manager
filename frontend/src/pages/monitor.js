@@ -16,7 +16,7 @@ function showModal(title, bodyHtml, onSave) {
   overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
 }
 
-export async function renderMonitor(container) {
+export async function renderMonitor(container, accountId) {
   container.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <h2>Keyword Monitors</h2>
@@ -33,7 +33,8 @@ export async function renderMonitor(container) {
 
   async function loadMonitors() {
     try {
-      const monitors = await api.getMonitors();
+      const allMonitors = await api.getMonitors();
+      const monitors = accountId ? allMonitors.filter((m) => m.account_id === accountId) : allMonitors;
       const tbody = document.getElementById("monitors-body");
       if (monitors.length === 0) {
         tbody.innerHTML = `<tr><td colspan="5" class="empty-state">No monitors</td></tr>`;
@@ -59,7 +60,7 @@ export async function renderMonitor(container) {
     if (accounts.length === 0) { alert("Please add an account first"); return; }
     showModal("Add Monitor", `
       <div class="form-group"><label>Account</label>
-        <select id="f-account">${accounts.map((a) => `<option value="${a.id}">${a.name} (@${a.username})</option>`).join("")}</select>
+        <select id="f-account">${accounts.map((a) => `<option value="${a.id}" ${a.id === accountId ? "selected" : ""}>${a.name} (@${a.username})</option>`).join("")}</select>
       </div>
       <div class="form-group"><label>Keyword</label><input id="f-keyword"></div>
       <div class="form-group"><label><input type="checkbox" id="f-discord"> Notify Discord</label></div>
