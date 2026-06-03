@@ -71,6 +71,42 @@ account_id,content,scheduled_at,repeat_type
 
 ---
 
+## world-holidays ツールで CSV を一括生成する
+
+祝日・国際デーを大量に登録する場合は [world-holidays](https://github.com/yomu-x00/world-holidays) ツールを使うと効率的です。
+
+### フロー
+
+```
+fetch_holidays.py  → holidays/MM.toml（各国祝日 + UN 国際デー）
+make_template.py   → template_MM.csv（全イベント一覧、content 列付き）
+  ↓ スプレッドシートで content 列を編集・選別
+toml_to_csv.py     → import_MM.csv（このページからインポートできる形式）
+```
+
+### テンプレート CSV のフォーマット
+
+`make_template.py` が生成するテンプレート CSV には、インポート用カラムに加えて編集補助カラムが含まれます。
+
+```csv
+date,weekday,event_name,source,content,scheduled_at,repeat_type
+2026-06-01,月,Reconciliation Day,オーストラリア,{event_name}（{country}）,2026-06-01 09:00,none
+2026-06-01,月,Global Day of Parents,国連,{event_name}（{country}）,2026-06-01 09:00,none
+2026-06-05,金,World Environment Day,国連,{event_name}（{country}）,2026-06-05 09:00,none
+```
+
+| カラム | 説明 |
+|---|---|
+| `date` / `weekday` | 日付・曜日（編集の目安用） |
+| `event_name` / `source` | 祝日名・国名（`content` を書くときの参考） |
+| `content` | ツイート本文。`{event_name}` `{country}` `{date}` `{weekday}` は変換時に自動置換 |
+| `scheduled_at` | 投稿日時（そのまま import CSV に引き継ぎ） |
+| `repeat_type` | 繰り返しタイプ |
+
+`content` が空の行は `toml_to_csv.py` でスキップされるため、使わないイベントは空欄のままにするだけで OK です。
+
+---
+
 ## API での一括登録
 
 WebUI を使わずに API から直接一括登録することもできます。
