@@ -4,6 +4,7 @@ Refactored to delegate all DB access to ScheduledPostRepository so this
 module only contains scheduling/repeat logic.
 """
 
+import json
 import logging
 import random
 import sqlite3
