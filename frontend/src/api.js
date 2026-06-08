@@ -35,6 +35,8 @@ export const api = {
   deleteAccount: (id) => request(`/accounts/${id}`, { method: "DELETE" }),
   verifyAccount: (id) => request(`/accounts/${id}/verify`, { method: "POST" }),
   cookieHealth: () => request("/accounts/cookie-health"),
+  getAccountTimeline: (accountId, count = 20) => request(`/accounts/${accountId}/timeline?count=${count}`),
+  deleteTweet: (accountId, tweetId) => request(`/accounts/${accountId}/tweets/${tweetId}`, { method: "DELETE" }),
 
   // Rules
   getRules: (accountId) => request(`/rules${accountId ? `?account_id=${accountId}` : ""}`),

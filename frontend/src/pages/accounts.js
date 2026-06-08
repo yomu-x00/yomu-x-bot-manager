@@ -64,6 +64,7 @@ export async function renderAccounts(container) {
           <td>${new Date(a.created_at).toLocaleDateString()}</td>
           <td>
             <button class="btn btn-sm btn-primary verify-btn" data-id="${a.id}">Verify</button>
+            <button class="btn btn-sm timeline-btn" data-id="${a.id}" data-username="${a.username}" style="background:var(--border)">Timeline</button>
             <button class="btn btn-sm edit-btn" data-id="${a.id}" style="background:var(--border)">Edit</button>
             <button class="btn btn-sm btn-danger delete-btn" data-id="${a.id}">Delete</button>
           </td>
@@ -76,6 +77,46 @@ export async function renderAccounts(container) {
           try {
             const result = await api.verifyAccount(btn.dataset.id);
             btn.textContent = result.valid ? "Valid" : "Invalid";
+          } catch {
+            btn.textContent = "Error";
+          }
+        };
+      });
+
+      tbody.querySelectorAll(".timeline-btn").forEach((btn) => {
+        btn.onclick = async () => {
+          btn.textContent = "...";
+          try {
+            const { tweets } = await api.getAccountTimeline(btn.dataset.id);
+            btn.textContent = "Timeline";
+            const accountId = Number(btn.dataset.id);
+            const username = btn.dataset.username;
+            const tweetsHtml = tweets.length === 0
+              ? `<div class="empty-state">ツイートがありません</div>`
+              : tweets.map((t) => `
+                <div style="padding:.6rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem">
+                  <div style="flex:1;font-size:.9rem;word-break:break-all">${t.text || t.full_text || JSON.stringify(t)}</div>
+                  <button class="btn btn-sm btn-danger del-tweet-btn" data-tweet-id="${t.id || t.id_str}" style="flex-shrink:0">削除</button>
+                </div>`).join("");
+            showModal(
+              `@${username} のタイムライン`,
+              `<div style="max-height:400px;overflow-y:auto">${tweetsHtml}</div>`,
+              async () => {}
+            );
+            document.querySelectorAll(".del-tweet-btn").forEach((delBtn) => {
+              delBtn.onclick = async (e) => {
+                e.stopPropagation();
+                if (!confirm("このツイートを削除しますか？")) return;
+                delBtn.textContent = "...";
+                try {
+                  await api.deleteTweet(accountId, delBtn.dataset.tweetId);
+                  delBtn.closest("div[style]").remove();
+                } catch (err) {
+                  alert("削除失敗: " + err.message);
+                  delBtn.textContent = "削除";
+                }
+              };
+            });
           } catch {
             btn.textContent = "Error";
           }

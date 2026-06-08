@@ -99,6 +99,11 @@ async def get_user_tweets(auth_token: str, ct0: str, username: str, count: int =
     return await run_cli(["user-posts", username, "--max", str(count), "--json"], env=env)
 
 
+async def delete_tweet(auth_token: str, ct0: str, tweet_id: str) -> ExecutionResult:
+    env = make_auth_env(auth_token, ct0)
+    return await run_cli(["delete", tweet_id, "--yes", "--json"], env=env)
+
+
 async def verify_credentials(auth_token: str, ct0: str) -> ExecutionResult:
     """Verify that the credentials are valid by fetching the authenticated user."""
     env = make_auth_env(auth_token, ct0)
