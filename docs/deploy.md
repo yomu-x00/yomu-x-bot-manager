@@ -151,7 +151,7 @@ credentials-file: /home/user/.cloudflared/<TUNNEL_ID>.json
 
 ingress:
   - hostname: bot.yourdomain.com
-    service: http://localhost:8000
+    service: http://localhost:5173  # frontend (nginx が /api/ をバックエンドへプロキシ)
   - service: http_status:404
 ```
 

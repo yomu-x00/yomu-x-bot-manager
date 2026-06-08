@@ -19,10 +19,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from crypto import get_encryption_key
+from crypto import decrypt, get_encryption_key
 from db import get_connection, init_db
 from dependencies import get_db_path
+from executor import verify_credentials
 from jobs import scheduler, sync_account_jobs
+from notify import send_discord_alert
+from repositories import AccountRepository
 from routers import (
     accounts_router,
     rules_router,
@@ -50,6 +53,37 @@ async def _scheduler_job() -> None:
         conn.close()
     except Exception:
         logger.exception("Scheduler job failed")
+
+
+async def _cookie_health_job() -> None:
+    """Daily job: verify all account cookies and notify Discord on failure."""
+    try:
+        conn = get_connection(get_db_path())
+        key = get_encryption_key()
+        repo = AccountRepository(conn)
+        accounts = repo.list_all()
+        invalid = []
+        for account in accounts:
+            row = repo.get_credentials(account["id"])
+            auth_token = decrypt(row["auth_token"], key)
+            ct0 = decrypt(row["ct0"], key)
+            result = await verify_credentials(auth_token, ct0)
+            if not result.success:
+                invalid.append(account["username"])
+        conn.close()
+
+        if invalid:
+            names = "\n".join(f"- @{u}" for u in invalid)
+            send_discord_alert(
+                f"🚨 **Cookie 失効アラート**\n"
+                f"以下のアカウントの Cookie が無効になっています:\n{names}\n"
+                f"WebUI から Cookie を更新してください。"
+            )
+            logger.warning("Cookie health check: %d invalid account(s): %s", len(invalid), invalid)
+        else:
+            logger.info("Cookie health check: all accounts OK")
+    except Exception:
+        logger.exception("Cookie health job failed")
 
 
 def _check_env() -> None:
@@ -89,6 +123,7 @@ async def lifespan(app: FastAPI):
     (db_path.parent / "uploads").mkdir(parents=True, exist_ok=True)
     sync_account_jobs()
     scheduler.add_job(_scheduler_job, "interval", minutes=1, id="scheduler")
+    scheduler.add_job(_cookie_health_job, "cron", hour=9, minute=0, id="cookie_health")
     scheduler.start()
     logger.info("Application started")
     yield

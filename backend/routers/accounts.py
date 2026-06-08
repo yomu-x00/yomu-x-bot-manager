@@ -21,6 +21,29 @@ def list_accounts(conn: sqlite3.Connection = Depends(get_db)):
     return repo.list_all()
 
 
+@router.get("/cookie-health")
+async def cookie_health(
+    conn: sqlite3.Connection = Depends(get_db),
+    key: bytes = Depends(get_key),
+):
+    """全アカウントの Cookie 有効性を一括チェックする。"""
+    repo = AccountRepository(conn)
+    accounts = repo.list_all()
+    results = []
+    for account in accounts:
+        row = repo.get_credentials(account["id"])
+        auth_token = decrypt(row["auth_token"], key)
+        ct0 = decrypt(row["ct0"], key)
+        result = await verify_credentials(auth_token, ct0)
+        results.append({
+            "account_id": account["id"],
+            "username": account["username"],
+            "valid": result.success,
+            "error": result.error if not result.success else None,
+        })
+    return results
+
+
 @router.post("", response_model=AccountResponse, status_code=201)
 def create_account(
     data: AccountCreate,

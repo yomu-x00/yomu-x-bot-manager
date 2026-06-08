@@ -9,14 +9,14 @@ services:
       - DATABASE_PATH=/app/data/twitter.db
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
-    ports:
-      - "8000:8000"
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+    # ポートはコンテナ内のみ。CF Tunnel 経由でのみアクセス
 
   twitter-frontend:
     build: ./frontend
     container_name: twitter-frontend
     restart: unless-stopped
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"  # localhost のみバインド（CF Tunnel 用）
     depends_on:
       - twitter-backend

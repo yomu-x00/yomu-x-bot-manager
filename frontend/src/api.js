@@ -34,6 +34,7 @@ export const api = {
   updateAccount: (id, data) => request(`/accounts/${id}`, { method: "PUT", body: data }),
   deleteAccount: (id) => request(`/accounts/${id}`, { method: "DELETE" }),
   verifyAccount: (id) => request(`/accounts/${id}/verify`, { method: "POST" }),
+  cookieHealth: () => request("/accounts/cookie-health"),
 
   // Rules
   getRules: (accountId) => request(`/rules${accountId ? `?account_id=${accountId}` : ""}`),
