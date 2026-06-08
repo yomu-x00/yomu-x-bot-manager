@@ -9,7 +9,8 @@ twitter-cli ベースのルールベース自動化管理ダッシュボード�
 |---|---|
 | ローカル uv 起動 | 動作確認済み |
 | twitter-cli 実連携 | 手動テスト待ち |
-| Docker デプロイ | 未検証 |
+| Docker デプロイ | 動作確認済み |
+| Cloudflare Tunnel | 動作確認済み |
 
 ## 機能
 
@@ -95,8 +96,12 @@ uv run pytest -v
 ### Docker Compose（本番・デプロイ用）
 
 ```bash
-docker compose up -d
+cp .env.example .env
+# ENCRYPTION_KEY・DISCORD_WEBHOOK_URL・CF_TUNNEL_TOKEN を設定
+docker compose up -d --build
 ```
+
+アクセス確認（ローカル）: `http://localhost:5173`
 
 ## ディレクトリ構成
 
@@ -206,12 +211,24 @@ ACTION_HANDLERS["bookmark"] = BookmarkActionHandler()
 
 ## Cloudflare Tunnel 設定
 
-既存の cloudflared にルート追加:
+`cloudflared` は Docker Compose に含まれており、トークンを `.env` に設定するだけで起動します。
 
-```yaml
-ingress:
-  - hostname: twitter.yomu.uk
-    service: http://localhost:8000
-```
+### トークンの取得
 
-Cloudflare Access で OTP 認証を設定し、WebUI へのアクセスを制限。
+1. [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → **Networks → Tunnels → Create a tunnel**
+2. **Cloudflared** を選択して名前をつける
+3. 表示されるトークンを `.env` の `CF_TUNNEL_TOKEN` に設定
+
+### Public Hostname の設定
+
+Cloudflare ダッシュボードのトンネル設定で以下を追加：
+
+| Subdomain | Service |
+|---|---|
+| `bot.yourdomain.com` | `http://twitter-frontend:80` |
+
+> `localhost` ではなく Docker サービス名 `twitter-frontend:80` を指定する。
+
+### アクセス制限（推奨）
+
+Zero Trust → **Access → Applications** で Self-hosted アプリを追加し、メール OTP 認証を設定する。
