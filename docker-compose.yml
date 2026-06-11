@@ -17,7 +17,8 @@ services:
     container_name: twitter-frontend
     restart: unless-stopped
     ports:
-      - "127.0.0.1:5173:80"  # localhost のみバインド（CF Tunnel 用）
+      - "127.0.0.1:5173:80"        # localhost のみバインド（CF Tunnel 用）
+      - "100.111.233.57:5173:80"   # Tailscale 経由アクセス用（200MBアップロード対応）
     depends_on:
       - twitter-backend
 
