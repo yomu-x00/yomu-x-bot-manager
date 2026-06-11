@@ -175,6 +175,30 @@ function showCsvImportModal(accounts, onImport) {
   };
 }
 
+function showPostPreview(post) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  const images = (post.image_paths || []).map((p) => {
+    const filename = p.split("/").pop();
+    return `<img src="/api/uploads/${filename}" style="max-width:100%;border-radius:6px;margin-bottom:8px">`;
+  }).join("");
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:480px;width:90vw">
+      <h3>投稿プレビュー</h3>
+      <div style="white-space:pre-wrap;margin-bottom:12px">${post.content || "(本文なし)"}</div>
+      ${images || `<div class="empty-state">画像なし</div>`}
+      <div style="font-size:12px;color:#888;margin-top:8px">
+        予定時刻: ${new Date(post.scheduled_at).toLocaleString()} / ステータス: ${post.status}
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="preview-close">閉じる</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector("#preview-close").onclick = () => overlay.remove();
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
 function showBulkImageModal(accounts, accountId, onSubmit) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -283,14 +307,22 @@ export async function renderSchedule(container, accountId) {
         return;
       }
       tbody.innerHTML = posts.map((p) => `
-        <tr>
-          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.content}</td>
+        <tr class="post-row" data-id="${p.id}" style="cursor:pointer">
+          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.content}${p.image_paths?.length ? ` 📷${p.image_paths.length}` : ""}</td>
           <td>${new Date(p.scheduled_at).toLocaleString()}</td>
           <td>${formatRepeat(p)}</td>
           <td><span class="badge ${p.status === "posted" ? "badge-success" : p.status === "failed" ? "badge-danger" : "badge-warning"}">${p.status}</span></td>
           <td>${p.status === "pending" ? `<button class="btn btn-sm btn-danger delete-post" data-id="${p.id}">Delete</button>` : ""}</td>
         </tr>
       `).join("");
+
+      tbody.querySelectorAll(".post-row").forEach((row) => {
+        row.onclick = (e) => {
+          if (e.target.closest(".delete-post")) return;
+          const post = posts.find((p) => p.id === Number(row.dataset.id));
+          showPostPreview(post);
+        };
+      });
 
       tbody.querySelectorAll(".delete-post").forEach((btn) => {
         btn.onclick = async () => {
