@@ -175,12 +175,89 @@ function showCsvImportModal(accounts, onImport) {
   };
 }
 
+function showBulkImageModal(accounts, accountId, onSubmit) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:560px;width:90vw">
+      <h3>画像一括スケジュール</h3>
+      <div class="form-group"><label>Account</label>
+        <select id="bi-account">${accounts.map((a) => `<option value="${a.id}" ${a.id === accountId ? "selected" : ""}>${a.name} (@${a.username})</option>`).join("")}</select>
+      </div>
+      <div class="form-group"><label>画像（複数選択可）</label><input id="bi-images" type="file" accept="image/*" multiple></div>
+      <div id="bi-count" style="font-size:12px;color:#888;margin-bottom:8px"></div>
+      <div class="form-group"><label>キャプション（全件共通・空欄可）</label><textarea id="bi-caption" rows="3"></textarea></div>
+      <div class="form-group"><label>投稿時刻（1日あたりの投稿数 = 時刻の数）</label>
+        <div id="bi-times" style="display:flex;flex-direction:column;gap:6px"></div>
+        <button class="btn btn-sm" id="bi-add-time" style="margin-top:6px">+ 時刻追加</button>
+      </div>
+      <div class="form-group"><label>開始日</label><input id="bi-start-date" type="date"></div>
+      <div class="modal-actions">
+        <button class="btn" id="bi-cancel">キャンセル</button>
+        <button class="btn btn-primary" id="bi-submit">スケジュール作成</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const timesContainer = overlay.querySelector("#bi-times");
+  function addTimeRow(value = "09:00") {
+    const row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.gap = "6px";
+    row.innerHTML = `<input type="time" class="bi-time" value="${value}"><button class="btn btn-sm bi-remove-time">削除</button>`;
+    row.querySelector(".bi-remove-time").onclick = () => row.remove();
+    timesContainer.appendChild(row);
+  }
+  addTimeRow("09:00");
+  addTimeRow("18:00");
+
+  overlay.querySelector("#bi-add-time").onclick = () => addTimeRow("12:00");
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  overlay.querySelector("#bi-start-date").value = todayStr;
+
+  overlay.querySelector("#bi-images").onchange = (e) => {
+    overlay.querySelector("#bi-count").textContent = `${e.target.files.length} 枚選択中`;
+  };
+
+  overlay.querySelector("#bi-cancel").onclick = () => overlay.remove();
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelector("#bi-submit").onclick = async () => {
+    const files = Array.from(overlay.querySelector("#bi-images").files);
+    if (files.length === 0) { alert("画像を選択してください"); return; }
+    const times = Array.from(overlay.querySelectorAll(".bi-time")).map((el) => el.value).filter(Boolean);
+    if (times.length === 0) { alert("投稿時刻を1つ以上指定してください"); return; }
+
+    const submitBtn = overlay.querySelector("#bi-submit");
+    submitBtn.disabled = true;
+    submitBtn.textContent = `アップロード中... 0/${files.length}`;
+
+    const image_paths = [];
+    for (let i = 0; i < files.length; i++) {
+      const { path } = await api.uploadImage(files[i]);
+      image_paths.push(path);
+      submitBtn.textContent = `アップロード中... ${i + 1}/${files.length}`;
+    }
+
+    await onSubmit({
+      account_id: Number(overlay.querySelector("#bi-account").value),
+      image_paths,
+      caption: overlay.querySelector("#bi-caption").value,
+      times,
+      start_date: overlay.querySelector("#bi-start-date").value,
+    });
+    overlay.remove();
+  };
+}
+
 export async function renderSchedule(container, accountId) {
   container.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <h2>Scheduled Posts</h2>
       <div style="display:flex;gap:8px">
         <button class="btn" id="import-csv">CSV インポート</button>
+        <button class="btn" id="bulk-images">画像一括スケジュール</button>
         <button class="btn btn-primary" id="add-post">+ Schedule Post</button>
       </div>
     </div>
@@ -230,6 +307,20 @@ export async function renderSchedule(container, accountId) {
   }
 
   document.getElementById("filter-status").onchange = (e) => loadPosts(e.target.value);
+
+  document.getElementById("bulk-images").onclick = () => {
+    if (accounts.length === 0) { alert("Please add an account first"); return; }
+    showBulkImageModal(accounts, accountId, async (data) => {
+      try {
+        const result = await api.bulkScheduleImages(data);
+        const msg = `${result.created} 件登録しました${result.errors.length ? `（${result.errors.length} 件エラー）` : ""}`;
+        alert(msg);
+        loadPosts(document.getElementById("filter-status").value);
+      } catch (e) {
+        alert(`登録失敗: ${e.message}`);
+      }
+    });
+  };
 
   document.getElementById("import-csv").onclick = () => {
     if (accounts.length === 0) { alert("Please add an account first"); return; }

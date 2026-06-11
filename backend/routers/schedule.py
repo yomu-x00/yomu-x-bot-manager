@@ -1,11 +1,18 @@
 """Scheduled post management API routes (Single Responsibility Principle)."""
 
 import sqlite3
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from dependencies import get_db
-from models import ScheduledPostBulkResult, ScheduledPostCreate, ScheduledPostResponse, ScheduledPostUpdate
+from models import (
+    BulkImageScheduleRequest,
+    ScheduledPostBulkResult,
+    ScheduledPostCreate,
+    ScheduledPostResponse,
+    ScheduledPostUpdate,
+)
 from repositories import AccountRepository, ScheduledPostRepository
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
@@ -98,6 +105,56 @@ def bulk_create_scheduled_posts(
                 repeat_type=data.repeat_type,
                 repeat_config=data.repeat_config,
                 image_paths=data.image_paths,
+            )
+            created.append(row)
+        except Exception as e:
+            errors.append({"index": i, "reason": str(e)})
+
+    return {"created": len(created), "errors": errors}
+
+
+@router.post("/bulk-images", response_model=ScheduledPostBulkResult, status_code=201)
+def bulk_schedule_images(
+    data: BulkImageScheduleRequest,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """画像を1枚ずつ、固定キャプション・固定時刻で1日N枚ずつ自動振り分けてスケジュールする。"""
+    if not AccountRepository(conn).get_by_id(data.account_id):
+        raise HTTPException(status_code=400, detail="Account not found")
+    if not data.image_paths:
+        raise HTTPException(status_code=400, detail="No images provided")
+    if not data.times:
+        raise HTTPException(status_code=400, detail="No time slots provided")
+
+    try:
+        start = datetime.fromisoformat(data.start_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid start_date")
+
+    times = sorted(data.times)
+    repo = ScheduledPostRepository(conn)
+
+    created, errors = [], []
+    for i, path in enumerate(data.image_paths):
+        day_offset = i // len(times)
+        slot = i % len(times)
+        try:
+            hour, minute = map(int, times[slot].split(":"))
+        except ValueError:
+            errors.append({"index": i, "reason": f"Invalid time slot: {times[slot]}"})
+            continue
+
+        scheduled_at = (start + timedelta(days=day_offset)).replace(
+            hour=hour, minute=minute, second=0, microsecond=0
+        )
+        try:
+            row = repo.create(
+                account_id=data.account_id,
+                content=data.caption,
+                scheduled_at=scheduled_at.isoformat(),
+                repeat_type="none",
+                repeat_config={},
+                image_paths=[path],
             )
             created.append(row)
         except Exception as e:

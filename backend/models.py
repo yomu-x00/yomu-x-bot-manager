@@ -93,6 +93,14 @@ class ScheduledPostBulkResult(BaseModel):
     errors: list[dict]
 
 
+class BulkImageScheduleRequest(BaseModel):
+    account_id: int
+    image_paths: list[str]
+    caption: str = ""
+    times: list[str]  # ["09:00", "18:00"]
+    start_date: str  # "YYYY-MM-DD"
+
+
 class ScheduledPostResponse(BaseModel):
     id: int
     account_id: int
