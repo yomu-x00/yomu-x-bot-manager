@@ -52,6 +52,7 @@ export const api = {
   bulkCreateScheduledPosts: (posts) => request("/schedule/bulk", { method: "POST", body: posts }),
   bulkScheduleImages: (data) => request("/schedule/bulk-images", { method: "POST", body: data }),
   deleteScheduledPost: (id) => request(`/schedule/${id}`, { method: "DELETE" }),
+  postNow: (id) => request(`/schedule/${id}/post-now`, { method: "POST" }),
   uploadImage: async (file) => {
     const form = new FormData();
     form.append("file", file);

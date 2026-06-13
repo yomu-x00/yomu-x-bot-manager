@@ -17,6 +17,35 @@ from repositories.schedule_repository import ScheduledPostRepository
 logger = logging.getLogger(__name__)
 
 
+async def post_scheduled_post(repo: ScheduledPostRepository, conn: sqlite3.Connection, post, encryption_key: bytes) -> bool:
+    """Post a single scheduled post immediately and update its status.
+
+    Returns True if the post succeeded.
+    """
+    post_id = post["id"]
+    try:
+        auth_token = decrypt(post["auth_token"], encryption_key)
+        ct0 = decrypt(post["ct0"], encryption_key)
+
+        image_paths = json.loads(post["image_paths"]) if isinstance(post["image_paths"], str) else post["image_paths"]
+        result = await post_tweet(auth_token, ct0, post["content"], images=image_paths)
+
+        if result.success:
+            repo.mark_posted(post_id, datetime.now().isoformat())
+            logger.info("Posted scheduled post %d", post_id)
+            _schedule_next_repeat(conn, post)
+            return True
+        else:
+            repo.mark_failed(post_id)
+            logger.warning("Failed to post scheduled post %d: %s", post_id, result.error)
+            return False
+
+    except Exception:
+        logger.exception("Error processing scheduled post %d", post_id)
+        repo.mark_failed(post_id)
+        return False
+
+
 async def process_pending_posts(conn: sqlite3.Connection, encryption_key: bytes) -> int:
     """Process all pending scheduled posts that are due.
 
@@ -25,32 +54,11 @@ async def process_pending_posts(conn: sqlite3.Connection, encryption_key: bytes)
     repo = ScheduledPostRepository(conn)
     now = datetime.now().isoformat()
     posts = repo.list_pending_due(now)
-    processed = 0
 
     for post in posts:
-        post_id = post["id"]
-        try:
-            auth_token = decrypt(post["auth_token"], encryption_key)
-            ct0 = decrypt(post["ct0"], encryption_key)
+        await post_scheduled_post(repo, conn, post, encryption_key)
 
-            image_paths = json.loads(post["image_paths"]) if isinstance(post["image_paths"], str) else post["image_paths"]
-            result = await post_tweet(auth_token, ct0, post["content"], images=image_paths)
-
-            if result.success:
-                repo.mark_posted(post_id, datetime.now().isoformat())
-                logger.info("Posted scheduled post %d", post_id)
-                _schedule_next_repeat(conn, post)
-            else:
-                repo.mark_failed(post_id)
-                logger.warning("Failed to post scheduled post %d: %s", post_id, result.error)
-
-            processed += 1
-
-        except Exception:
-            logger.exception("Error processing scheduled post %d", post_id)
-            repo.mark_failed(post_id)
-
-    return processed
+    return len(posts)
 
 
 def _schedule_next_repeat(conn: sqlite3.Connection, post: sqlite3.Row) -> None:

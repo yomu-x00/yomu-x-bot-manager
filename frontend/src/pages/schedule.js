@@ -312,13 +312,16 @@ export async function renderSchedule(container, accountId) {
           <td>${new Date(p.scheduled_at).toLocaleString()}</td>
           <td>${formatRepeat(p)}</td>
           <td><span class="badge ${p.status === "posted" ? "badge-success" : p.status === "failed" ? "badge-danger" : "badge-warning"}">${p.status}</span></td>
-          <td>${p.status === "pending" ? `<button class="btn btn-sm btn-danger delete-post" data-id="${p.id}">Delete</button>` : ""}</td>
+          <td>${p.status === "pending" ? `
+            <button class="btn btn-sm post-now" data-id="${p.id}">今すぐ投稿</button>
+            <button class="btn btn-sm btn-danger delete-post" data-id="${p.id}">Delete</button>
+          ` : ""}</td>
         </tr>
       `).join("");
 
       tbody.querySelectorAll(".post-row").forEach((row) => {
         row.onclick = (e) => {
-          if (e.target.closest(".delete-post")) return;
+          if (e.target.closest(".delete-post") || e.target.closest(".post-now")) return;
           const post = posts.find((p) => p.id === Number(row.dataset.id));
           showPostPreview(post);
         };
@@ -329,6 +332,22 @@ export async function renderSchedule(container, accountId) {
           if (confirm("Delete this scheduled post?")) {
             await api.deleteScheduledPost(btn.dataset.id);
             loadPosts(document.getElementById("filter-status").value);
+          }
+        };
+      });
+
+      tbody.querySelectorAll(".post-now").forEach((btn) => {
+        btn.onclick = async () => {
+          if (!confirm("この内容を今すぐ投稿しますか？")) return;
+          btn.disabled = true;
+          btn.textContent = "投稿中...";
+          try {
+            await api.postNow(btn.dataset.id);
+            loadPosts(document.getElementById("filter-status").value);
+          } catch (err) {
+            alert("投稿に失敗しました: " + err.message);
+            btn.disabled = false;
+            btn.textContent = "今すぐ投稿";
           }
         };
       });

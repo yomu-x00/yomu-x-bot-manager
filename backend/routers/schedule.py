@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from dependencies import get_db
+from dependencies import get_db, get_key
 from models import (
     BulkImageScheduleRequest,
     ScheduledPostBulkResult,
@@ -14,6 +14,7 @@ from models import (
     ScheduledPostUpdate,
 )
 from repositories import AccountRepository, ScheduledPostRepository
+from scheduler import post_scheduled_post
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
 
@@ -161,6 +162,27 @@ def bulk_schedule_images(
             errors.append({"index": i, "reason": str(e)})
 
     return {"created": len(created), "errors": errors}
+
+
+@router.post("/{post_id}/post-now", response_model=ScheduledPostResponse)
+async def post_now(
+    post_id: int,
+    conn: sqlite3.Connection = Depends(get_db),
+    encryption_key: bytes = Depends(get_key),
+):
+    """指定したスケジュール投稿を即時投稿する。"""
+    repo = ScheduledPostRepository(conn)
+    row = repo.get_with_credentials(post_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Scheduled post not found")
+    if row["status"] != "pending":
+        raise HTTPException(status_code=409, detail="Only pending posts can be posted")
+
+    success = await post_scheduled_post(repo, conn, row, encryption_key)
+    if not success:
+        raise HTTPException(status_code=502, detail="Failed to post tweet")
+
+    return repo.get_by_id(post_id)
 
 
 @router.delete("/{post_id}", status_code=204)

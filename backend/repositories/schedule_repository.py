@@ -53,6 +53,16 @@ class ScheduledPostRepository:
         ).fetchone()
         return _parse_post_row(row) if row else None
 
+    def get_with_credentials(self, post_id: int) -> sqlite3.Row | None:
+        """Return a single scheduled post joined with its account credentials."""
+        return self._conn.execute(
+            """SELECT sp.*, a.auth_token, a.ct0
+            FROM scheduled_posts sp
+            JOIN accounts a ON sp.account_id = a.id
+            WHERE sp.id = ?""",
+            (post_id,),
+        ).fetchone()
+
     def update(self, post_id: int, updates: dict[str, Any]) -> dict[str, Any]:
         """Apply a partial update to a pending post and return the updated row."""
         set_clause = ", ".join(f"{k} = ?" for k in updates)

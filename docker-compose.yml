@@ -6,6 +6,7 @@ services:
     volumes:
       - ./data:/app/data
     environment:
+      - TZ=Asia/Tokyo
       - DATABASE_PATH=/app/data/twitter.db
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
