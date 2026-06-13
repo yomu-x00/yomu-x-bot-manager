@@ -55,12 +55,19 @@ async function initAccountSelector() {
     selector.innerHTML = accounts
       .map((a) => `<option value="${a.id}">@${a.username}</option>`)
       .join("");
-    currentAccountId = accounts[0].id;
+
+    const saved = Number(localStorage.getItem("selectedAccountId"));
+    currentAccountId = accounts.some((a) => a.id === saved) ? saved : accounts[0].id;
     selector.value = currentAccountId;
   }
 
   selector.addEventListener("change", () => {
     currentAccountId = selector.value ? Number(selector.value) : null;
+    if (currentAccountId) {
+      localStorage.setItem("selectedAccountId", currentAccountId);
+    } else {
+      localStorage.removeItem("selectedAccountId");
+    }
     navigate(currentPage);
   });
 }
