@@ -11,7 +11,7 @@ import sqlite3
 from datetime import datetime, timedelta
 
 from crypto import decrypt
-from executor import post_tweet
+from executor import apply_tweet_suffix, post_tweet
 from repositories.schedule_repository import ScheduledPostRepository
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,8 @@ async def post_scheduled_post(repo: ScheduledPostRepository, conn: sqlite3.Conne
         ct0 = decrypt(post["ct0"], encryption_key)
 
         image_paths = json.loads(post["image_paths"]) if isinstance(post["image_paths"], str) else post["image_paths"]
-        result = await post_tweet(auth_token, ct0, post["content"], images=image_paths)
+        content = apply_tweet_suffix(post["content"], post.get("tweet_suffix"))
+        result = await post_tweet(auth_token, ct0, content, images=image_paths)
 
         if result.success:
             repo.mark_posted(post_id, datetime.now().isoformat())

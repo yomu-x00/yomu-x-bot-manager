@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from crypto import decrypt
 from dependencies import get_db, get_key
-from executor import post_tweet
+from executor import apply_tweet_suffix, post_tweet
 from models import WebhookTweetRequest
 from repositories import AccountRepository
 
@@ -38,8 +38,9 @@ async def webhook_tweet(
 
     auth_token = decrypt(account_row["auth_token"], key)
     ct0 = decrypt(account_row["ct0"], key)
+    text = apply_tweet_suffix(req.text, account_row.get("tweet_suffix"))
 
-    result = await post_tweet(auth_token, ct0, req.text, req.images)
+    result = await post_tweet(auth_token, ct0, text, req.images)
     if not result.success:
         logger.warning("webhook_tweet failed for account %d: %s", req.account_id, result.error)
         raise HTTPException(status_code=500, detail=result.error)

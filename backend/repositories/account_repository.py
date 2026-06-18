@@ -13,7 +13,7 @@ class AccountRepository:
     def list_all(self) -> list[dict[str, Any]]:
         """Return all accounts ordered by id."""
         cursor = self._conn.execute(
-            "SELECT id, name, username, is_active, interval_minutes, created_at FROM accounts ORDER BY id"
+            "SELECT id, name, username, is_active, interval_minutes, tweet_suffix, created_at FROM accounts ORDER BY id"
         )
         return [dict(row) for row in cursor.fetchall()]
 
@@ -39,16 +39,17 @@ class AccountRepository:
         username: str,
         is_active: bool,
         interval_minutes: int = 5,
+        tweet_suffix: str | None = None,
     ) -> dict[str, Any]:
         """Insert a new account and return the created row."""
         cursor = self._conn.execute(
-            """INSERT INTO accounts (name, auth_token, ct0, username, is_active, interval_minutes)
-            VALUES (?, ?, ?, ?, ?, ?)""",
-            (name, encrypted_token, encrypted_ct0, username, is_active, interval_minutes),
+            """INSERT INTO accounts (name, auth_token, ct0, username, is_active, interval_minutes, tweet_suffix)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (name, encrypted_token, encrypted_ct0, username, is_active, interval_minutes, tweet_suffix),
         )
         self._conn.commit()
         row = self._conn.execute(
-            "SELECT id, name, username, is_active, interval_minutes, created_at FROM accounts WHERE id = ?",
+            "SELECT id, name, username, is_active, interval_minutes, tweet_suffix, created_at FROM accounts WHERE id = ?",
             (cursor.lastrowid,),
         ).fetchone()
         return dict(row)
@@ -60,7 +61,7 @@ class AccountRepository:
         self._conn.execute(f"UPDATE accounts SET {set_clause} WHERE id = ?", values)
         self._conn.commit()
         row = self._conn.execute(
-            "SELECT id, name, username, is_active, interval_minutes, created_at FROM accounts WHERE id = ?",
+            "SELECT id, name, username, is_active, interval_minutes, tweet_suffix, created_at FROM accounts WHERE id = ?",
             (account_id,),
         ).fetchone()
         return dict(row)

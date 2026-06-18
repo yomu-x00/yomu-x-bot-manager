@@ -18,6 +18,21 @@ class ExecutionResult:
     error: str
 
 
+def apply_tweet_suffix(text: str, suffix: str | None) -> str:
+    """末尾テキストを付与し、280字を超える場合は本文を切り詰める。"""
+    if not suffix:
+        return text
+    combined = text + suffix
+    if len(combined) <= 280:
+        return combined
+    max_text = 280 - len(suffix)
+    if max_text <= 0:
+        logger.warning("tweet_suffix alone exceeds 280 chars; suffix not applied")
+        return text
+    logger.warning("Tweet text truncated by %d chars to fit tweet_suffix", len(text) - max_text)
+    return text[:max_text] + suffix
+
+
 def make_auth_env(auth_token: str, ct0: str) -> dict[str, str]:
     return {
         "TWITTER_AUTH_TOKEN": auth_token,

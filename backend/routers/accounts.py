@@ -10,7 +10,7 @@ from dependencies import get_db, get_key
 from jobs import sync_account_jobs
 from models import AccountCreate, AccountResponse, AccountUpdate, TweetPostRequest
 from repositories import AccountRepository
-from executor import verify_credentials, post_tweet, get_user_tweets, delete_tweet
+from executor import apply_tweet_suffix, verify_credentials, post_tweet, get_user_tweets, delete_tweet
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
@@ -58,6 +58,7 @@ def create_account(
         username=data.username,
         is_active=data.is_active,
         interval_minutes=data.interval_minutes,
+        tweet_suffix=data.tweet_suffix,
     )
     sync_account_jobs()
     return result
@@ -99,6 +100,8 @@ def update_account(
         updates["auth_token"] = encrypt(data.auth_token, key)
     if data.ct0 is not None:
         updates["ct0"] = encrypt(data.ct0, key)
+    if data.tweet_suffix is not None:
+        updates["tweet_suffix"] = data.tweet_suffix or None
 
     if not updates:
         return repo.get_by_id(account_id)
@@ -128,13 +131,14 @@ async def post_tweet_direct(
 ):
     """指定アカウントで即時ツイートを投稿する。"""
     repo = AccountRepository(conn)
-    row = repo.get_credentials(account_id)
-    if not row:
+    account_row = repo.get_by_id(account_id)
+    if not account_row:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    auth_token = decrypt(row["auth_token"], key)
-    ct0 = decrypt(row["ct0"], key)
-    result = await post_tweet(auth_token, ct0, data.text, data.images)
+    auth_token = decrypt(account_row["auth_token"], key)
+    ct0 = decrypt(account_row["ct0"], key)
+    text = apply_tweet_suffix(data.text, account_row.get("tweet_suffix"))
+    result = await post_tweet(auth_token, ct0, text, data.images)
     if not result.success:
         raise HTTPException(status_code=500, detail=result.error)
     try:

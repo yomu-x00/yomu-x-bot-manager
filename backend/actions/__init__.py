@@ -12,6 +12,7 @@ from typing import Protocol, runtime_checkable
 import httpx
 
 from executor import (
+    apply_tweet_suffix,
     like_tweet,
     retweet,
     reply_tweet,
@@ -132,6 +133,7 @@ class TweetActionHandler:
             )
         except KeyError:
             pass
+        text = apply_tweet_suffix(text, config.get("_tweet_suffix"))
         result = await post_tweet(auth_token, ct0, text)
         return (True, "") if result.success else (False, result.error)
 

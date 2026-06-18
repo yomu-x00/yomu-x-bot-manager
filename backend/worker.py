@@ -121,7 +121,7 @@ async def process_rule(
 
     # Retrieve active account credentials
     account = conn.execute(
-        "SELECT auth_token, ct0 FROM accounts WHERE id = ? AND is_active = 1",
+        "SELECT auth_token, ct0, tweet_suffix FROM accounts WHERE id = ? AND is_active = 1",
         (account_id,),
     ).fetchone()
     if not account:
@@ -130,6 +130,7 @@ async def process_rule(
 
     auth_token = decrypt(account["auth_token"], encryption_key)
     ct0 = decrypt(account["ct0"], encryption_key)
+    tweet_suffix = account["tweet_suffix"]
 
     if not check_daily_limit(conn, rule_id, daily_limit):
         logger.info("Rule %d reached daily limit (%d)", rule_id, daily_limit)
@@ -167,7 +168,8 @@ async def process_rule(
         if not trigger_handler.matches(tweet, trigger_config):
             continue
 
-        success, error = await action_handler.execute(auth_token, ct0, action_config, tweet)
+        config_with_suffix = {**action_config, "_tweet_suffix": tweet_suffix} if action_type == "tweet" else action_config
+        success, error = await action_handler.execute(auth_token, ct0, config_with_suffix, tweet)
         if success:
             log_execution(conn, rule_id, account_id, tweet_id, action_type, "success")
             executed += 1

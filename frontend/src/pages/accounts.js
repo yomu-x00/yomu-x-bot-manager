@@ -7,6 +7,11 @@ function accountFormHtml(account = null) {
     <div class="form-group"><label>auth_token</label><input id="f-auth-token" type="password" value=""></div>
     <div class="form-group"><label>ct0</label><input id="f-ct0" type="password" value=""></div>
     <div class="form-group"><label>実行間隔（分）</label><input id="f-interval-minutes" type="number" min="1" value="${account?.interval_minutes ?? 5}"></div>
+    <div class="form-group">
+      <label>ツイート末尾テキスト（tweet_suffix）</label>
+      <textarea id="f-tweet-suffix" rows="2" placeholder="例: &#10;#世界の祝日" style="font-family:monospace">${account?.tweet_suffix || ""}</textarea>
+      <div style="font-size:11px;color:#888;margin-top:2px">全投稿の末尾に自動付与。空欄で無効。\\n は改行。</div>
+    </div>
   `;
 }
 
@@ -142,11 +147,13 @@ export async function renderAccounts(container) {
             const authToken = document.getElementById("f-auth-token").value;
             const ct0 = document.getElementById("f-ct0").value;
             const intervalMinutes = Number(document.getElementById("f-interval-minutes").value);
+            const suffix = document.getElementById("f-tweet-suffix").value;
             if (name) data.name = name;
             if (username) data.username = username;
             if (authToken) data.auth_token = authToken;
             if (ct0) data.ct0 = ct0;
             data.interval_minutes = intervalMinutes > 0 ? intervalMinutes : 5;
+            data.tweet_suffix = suffix || null;
             await api.updateAccount(account.id, data);
             loadAccounts();
           });
@@ -160,12 +167,14 @@ export async function renderAccounts(container) {
 
   document.getElementById("add-account").onclick = () => {
     showModal("Add Account", accountFormHtml(), async () => {
+      const suffix = document.getElementById("f-tweet-suffix").value;
       await api.createAccount({
         name: document.getElementById("f-name").value,
         username: document.getElementById("f-username").value,
         auth_token: document.getElementById("f-auth-token").value,
         ct0: document.getElementById("f-ct0").value,
         interval_minutes: Number(document.getElementById("f-interval-minutes").value) || 5,
+        tweet_suffix: suffix || null,
       });
       loadAccounts();
     });

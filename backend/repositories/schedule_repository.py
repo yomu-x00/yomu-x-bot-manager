@@ -35,7 +35,7 @@ class ScheduledPostRepository:
     def list_pending_due(self, now_iso: str) -> list[sqlite3.Row]:
         """Return pending posts that are due, joined with account credentials."""
         cursor = self._conn.execute(
-            """SELECT sp.*, a.auth_token, a.ct0
+            """SELECT sp.*, a.auth_token, a.ct0, a.tweet_suffix
             FROM scheduled_posts sp
             JOIN accounts a ON sp.account_id = a.id
             WHERE sp.status = 'pending'
@@ -56,7 +56,7 @@ class ScheduledPostRepository:
     def get_with_credentials(self, post_id: int) -> sqlite3.Row | None:
         """Return a single scheduled post joined with its account credentials."""
         return self._conn.execute(
-            """SELECT sp.*, a.auth_token, a.ct0
+            """SELECT sp.*, a.auth_token, a.ct0, a.tweet_suffix
             FROM scheduled_posts sp
             JOIN accounts a ON sp.account_id = a.id
             WHERE sp.id = ?""",

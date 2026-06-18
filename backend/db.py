@@ -96,6 +96,8 @@ def init_db(db_path: Path | None = None) -> None:
         acct_cols = [r[1] for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
         if "interval_minutes" not in acct_cols:
             conn.execute("ALTER TABLE accounts ADD COLUMN interval_minutes INTEGER NOT NULL DEFAULT 5")
+        if "tweet_suffix" not in acct_cols:
+            conn.execute("ALTER TABLE accounts ADD COLUMN tweet_suffix TEXT")
 
         # migrate: add image_paths to scheduled_posts if missing
         post_cols = [r[1] for r in conn.execute("PRAGMA table_info(scheduled_posts)").fetchall()]
