@@ -35,26 +35,58 @@ const CSV_TEMPLATE = `account_id,content,scheduled_at,repeat_type
 1,毎日投稿,2026-06-03 18:00,daily`;
 
 function parseCsv(text) {
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2) return { rows: [], error: "ヘッダー行とデータ行が必要です" };
+  // RFC 4180準拠パーサー: クォートフィールド内の改行を正しく処理する
+  const src = text.replace(/^﻿/, ""); // BOM除去
+  const allRows = [];
+  let row = [];
+  let field = "";
+  let inQuote = false;
 
-  const headers = lines[0].split(",").map((h) => h.trim());
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (inQuote) {
+      if (ch === '"') {
+        if (src[i + 1] === '"') { field += '"'; i++; } // escaped ""
+        else inQuote = false;
+      } else {
+        field += ch; // 改行もそのまま取り込む
+      }
+    } else {
+      if (ch === '"') {
+        inQuote = true;
+      } else if (ch === ',') {
+        row.push(field.trim()); field = "";
+      } else if (ch === '\r') {
+        // \r\n → skip \r
+      } else if (ch === '\n') {
+        row.push(field.trim()); field = "";
+        if (row.some((f) => f !== "")) allRows.push(row);
+        row = [];
+      } else {
+        field += ch;
+      }
+    }
+  }
+  // 末尾処理
+  row.push(field.trim());
+  if (row.some((f) => f !== "")) allRows.push(row);
+
+  if (allRows.length < 2) return { rows: [], error: "ヘッダー行とデータ行が必要です" };
+
+  const headers = allRows[0].map((h) => h.replace(/^﻿/, "").trim());
   const required = ["content", "scheduled_at"];
   for (const r of required) {
     if (!headers.includes(r)) return { rows: [], error: `必須カラム "${r}" がありません` };
   }
 
-  const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    if (!lines[i].trim()) continue;
-    // Simple CSV split (handles quoted fields with commas)
-    const values = lines[i].match(/("(?:[^"]|"")*"|[^,]*)/g).filter((_, j) => j % 2 === 0);
+  const rows = allRows.slice(1).map((values, idx) => {
     const row = {};
-    headers.forEach((h, idx) => {
-      row[h] = (values[idx] || "").replace(/^"|"$/g, "").replace(/""/g, '"').trim();
-    });
-    rows.push({ ...row, _line: i + 1 });
-  }
+    headers.forEach((h, i) => { row[h] = values[i] ?? ""; });
+    return { ...row, _line: idx + 2 };
+  });
+
+  console.log("[CSV Import] headers:", headers);
+  console.log("[CSV Import] parsed rows:", rows.length, rows);
   return { rows, error: null };
 }
 
@@ -64,7 +96,7 @@ function normalizeScheduledAt(s) {
 }
 
 function validateCsvRows(rows, accounts) {
-  return rows.map((row) => {
+  const result = rows.map((row) => {
     const errors = [];
     if (!row.content) errors.push("content が空");
     const normalized = normalizeScheduledAt(row.scheduled_at);
@@ -74,6 +106,13 @@ function validateCsvRows(rows, accounts) {
     if (row.account_id && !accounts.find((a) => a.id === accountId)) errors.push(`account_id=${row.account_id} が存在しない`);
     return { ...row, _errors: errors };
   });
+  const errorRows = result.filter((r) => r._errors.length > 0);
+  if (errorRows.length > 0) {
+    console.error("[CSV Validation] エラー行:", errorRows.length, "件", errorRows);
+  } else {
+    console.log("[CSV Validation] 全行 OK:", result.length, "件");
+  }
+  return result;
 }
 
 function showCsvImportModal(accounts, onImport) {
