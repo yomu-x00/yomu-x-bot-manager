@@ -291,12 +291,20 @@ export async function renderSchedule(container, accountId) {
         <button class="btn btn-primary" id="add-post">+ Schedule Post</button>
       </div>
     </div>
-    <div class="filter-bar">
+    <div class="filter-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <select id="filter-status"><option value="">All</option><option value="pending">Pending</option><option value="posted">Posted</option><option value="failed">Failed</option></select>
+      <div id="bulk-actions" style="display:none;gap:8px;align-items:center;display:flex">
+        <span id="selected-count" style="font-size:13px;color:#555"></span>
+        <button class="btn btn-sm" id="bulk-post-now">今すぐ投稿</button>
+        <button class="btn btn-sm btn-danger" id="bulk-delete">削除</button>
+      </div>
     </div>
     <div class="card"><table>
-      <thead><tr><th>Content</th><th>Scheduled At</th><th>Repeat</th><th>Status</th><th>Actions</th></tr></thead>
-      <tbody id="posts-body"><tr><td colspan="5" class="empty-state">Loading...</td></tr></tbody>
+      <thead><tr>
+        <th style="width:32px"><input type="checkbox" id="select-all" title="すべて選択"></th>
+        <th>Content</th><th>Scheduled At</th><th>Repeat</th><th>Status</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="posts-body"><tr><td colspan="6" class="empty-state">Loading...</td></tr></tbody>
     </table></div>
   `;
 
@@ -309,11 +317,14 @@ export async function renderSchedule(container, accountId) {
       const posts = accountId ? allPosts.filter((p) => p.account_id === accountId) : allPosts;
       const tbody = document.getElementById("posts-body");
       if (posts.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="empty-state">No scheduled posts</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="empty-state">No scheduled posts</td></tr>`;
         return;
       }
       tbody.innerHTML = posts.map((p) => `
-        <tr class="post-row" data-id="${p.id}" style="cursor:pointer">
+        <tr class="post-row" data-id="${p.id}" data-status="${p.status}" style="cursor:pointer">
+          <td style="width:32px" onclick="event.stopPropagation()">
+            ${p.status === "pending" ? `<input type="checkbox" class="row-check" data-id="${p.id}">` : ""}
+          </td>
           <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.content}${p.image_paths?.length ? ` 📷${p.image_paths.length}` : ""}</td>
           <td>${new Date(p.scheduled_at).toLocaleString()}</td>
           <td>${formatRepeat(p)}</td>
@@ -325,9 +336,41 @@ export async function renderSchedule(container, accountId) {
         </tr>
       `).join("");
 
+      const bulkActions = document.getElementById("bulk-actions");
+      const selectedCount = document.getElementById("selected-count");
+      const selectAll = document.getElementById("select-all");
+
+      function getChecked() {
+        return Array.from(tbody.querySelectorAll(".row-check:checked")).map((cb) => cb.dataset.id);
+      }
+
+      function updateBulkBar() {
+        const ids = getChecked();
+        if (ids.length > 0) {
+          bulkActions.style.display = "flex";
+          selectedCount.textContent = `${ids.length} 件選択中`;
+        } else {
+          bulkActions.style.display = "none";
+        }
+        const allChecks = tbody.querySelectorAll(".row-check");
+        selectAll.checked = allChecks.length > 0 && ids.length === allChecks.length;
+        selectAll.indeterminate = ids.length > 0 && ids.length < allChecks.length;
+      }
+
+      selectAll.checked = false;
+      selectAll.indeterminate = false;
+      selectAll.onchange = () => {
+        tbody.querySelectorAll(".row-check").forEach((cb) => { cb.checked = selectAll.checked; });
+        updateBulkBar();
+      };
+
+      tbody.querySelectorAll(".row-check").forEach((cb) => {
+        cb.onchange = updateBulkBar;
+      });
+
       tbody.querySelectorAll(".post-row").forEach((row) => {
         row.onclick = (e) => {
-          if (e.target.closest(".delete-post") || e.target.closest(".post-now")) return;
+          if (e.target.closest(".delete-post") || e.target.closest(".post-now") || e.target.closest("input[type=checkbox]")) return;
           const post = posts.find((p) => p.id === Number(row.dataset.id));
           showPostPreview(post);
         };
@@ -357,6 +400,26 @@ export async function renderSchedule(container, accountId) {
           }
         };
       });
+
+      document.getElementById("bulk-delete").onclick = async () => {
+        const ids = getChecked();
+        if (!ids.length) return;
+        if (!confirm(`選択した ${ids.length} 件を削除しますか？`)) return;
+        await Promise.all(ids.map((id) => api.deleteScheduledPost(id)));
+        loadPosts(document.getElementById("filter-status").value);
+      };
+
+      document.getElementById("bulk-post-now").onclick = async () => {
+        const ids = getChecked();
+        if (!ids.length) return;
+        if (!confirm(`選択した ${ids.length} 件を今すぐ投稿しますか？`)) return;
+        document.getElementById("bulk-post-now").disabled = true;
+        document.getElementById("bulk-post-now").textContent = "投稿中...";
+        for (const id of ids) {
+          try { await api.postNow(id); } catch {}
+        }
+        loadPosts(document.getElementById("filter-status").value);
+      };
     } catch {
       document.getElementById("posts-body").innerHTML =
         `<tr><td colspan="5" class="empty-state">Failed to load</td></tr>`;
