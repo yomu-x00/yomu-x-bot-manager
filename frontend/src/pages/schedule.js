@@ -323,16 +323,16 @@ export async function renderSchedule(container, accountId) {
       tbody.innerHTML = posts.map((p) => `
         <tr class="post-row" data-id="${p.id}" data-status="${p.status}" style="cursor:pointer">
           <td style="width:32px" onclick="event.stopPropagation()">
-            ${p.status === "pending" ? `<input type="checkbox" class="row-check" data-id="${p.id}">` : ""}
+            <input type="checkbox" class="row-check" data-id="${p.id}" data-status="${p.status}">
           </td>
           <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.content}${p.image_paths?.length ? ` 📷${p.image_paths.length}` : ""}</td>
           <td>${new Date(p.scheduled_at).toLocaleString()}</td>
           <td>${formatRepeat(p)}</td>
           <td><span class="badge ${p.status === "posted" ? "badge-success" : p.status === "failed" ? "badge-danger" : "badge-warning"}">${p.status}</span></td>
-          <td>${p.status === "pending" ? `
-            <button class="btn btn-sm post-now" data-id="${p.id}">今すぐ投稿</button>
+          <td>
+            ${p.status === "pending" ? `<button class="btn btn-sm post-now" data-id="${p.id}">今すぐ投稿</button>` : ""}
             <button class="btn btn-sm btn-danger delete-post" data-id="${p.id}">Delete</button>
-          ` : ""}</td>
+          </td>
         </tr>
       `).join("");
 
@@ -344,11 +344,17 @@ export async function renderSchedule(container, accountId) {
         return Array.from(tbody.querySelectorAll(".row-check:checked")).map((cb) => cb.dataset.id);
       }
 
+      function getCheckedPending() {
+        return Array.from(tbody.querySelectorAll(".row-check:checked[data-status=pending]")).map((cb) => cb.dataset.id);
+      }
+
       function updateBulkBar() {
         const ids = getChecked();
+        const pendingIds = getCheckedPending();
         if (ids.length > 0) {
           bulkActions.style.display = "flex";
           selectedCount.textContent = `${ids.length} 件選択中`;
+          document.getElementById("bulk-post-now").style.display = pendingIds.length > 0 ? "" : "none";
         } else {
           bulkActions.style.display = "none";
         }
@@ -410,7 +416,7 @@ export async function renderSchedule(container, accountId) {
       };
 
       document.getElementById("bulk-post-now").onclick = async () => {
-        const ids = getChecked();
+        const ids = getCheckedPending();
         if (!ids.length) return;
         if (!confirm(`選択した ${ids.length} 件を今すぐ投稿しますか？`)) return;
         document.getElementById("bulk-post-now").disabled = true;
