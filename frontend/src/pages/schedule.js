@@ -58,12 +58,18 @@ function parseCsv(text) {
   return { rows, error: null };
 }
 
+function normalizeScheduledAt(s) {
+  // "2026-06-01 09:00" → "2026-06-01T09:00" so new Date() parses it reliably across browsers
+  return s ? s.trim().replace(/\s+/, "T") : s;
+}
+
 function validateCsvRows(rows, accounts) {
   return rows.map((row) => {
     const errors = [];
     if (!row.content) errors.push("content が空");
-    const dt = new Date(row.scheduled_at);
-    if (!row.scheduled_at || isNaN(dt)) errors.push("scheduled_at が無効な日時");
+    const normalized = normalizeScheduledAt(row.scheduled_at);
+    const dt = new Date(normalized);
+    if (!normalized || isNaN(dt)) errors.push("scheduled_at が無効な日時 (例: 2026-06-01 09:00)");
     const accountId = Number(row.account_id);
     if (row.account_id && !accounts.find((a) => a.id === accountId)) errors.push(`account_id=${row.account_id} が存在しない`);
     return { ...row, _errors: errors };
@@ -165,7 +171,7 @@ function showCsvImportModal(accounts, onImport) {
       .map((r) => ({
         account_id: Number(r.account_id) || defaultAccountId,
         content: r.content,
-        scheduled_at: new Date(r.scheduled_at).toISOString(),
+        scheduled_at: normalizeScheduledAt(r.scheduled_at),
         repeat_type: r.repeat_type || "none",
         repeat_config: {},
         image_paths: [],
@@ -443,7 +449,7 @@ export async function renderSchedule(container, accountId) {
       await api.createScheduledPost({
         account_id: Number(document.getElementById("f-account").value),
         content: document.getElementById("f-content").value,
-        scheduled_at: new Date(document.getElementById("f-scheduled-at").value).toISOString(),
+        scheduled_at: document.getElementById("f-scheduled-at").value,
         repeat_type: repeatType,
         repeat_config,
         image_paths,
