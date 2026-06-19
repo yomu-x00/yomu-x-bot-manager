@@ -37,6 +37,7 @@ export const api = {
   cookieHealth: () => request("/accounts/cookie-health"),
   getAccountTimeline: (accountId, count = 20) => request(`/accounts/${accountId}/timeline?count=${count}`),
   deleteTweet: (accountId, tweetId) => request(`/accounts/${accountId}/tweets/${tweetId}`, { method: "DELETE" }),
+  postTweet: (accountId, text) => request(`/accounts/${accountId}/tweet`, { method: "POST", body: { text } }),
 
   // Rules
   getRules: (accountId) => request(`/rules${accountId ? `?account_id=${accountId}` : ""}`),
@@ -53,6 +54,7 @@ export const api = {
   bulkScheduleImages: (data) => request("/schedule/bulk-images", { method: "POST", body: data }),
   deleteScheduledPost: (id) => request(`/schedule/${id}`, { method: "DELETE" }),
   postNow: (id) => request(`/schedule/${id}/post-now`, { method: "POST" }),
+  retryPost: (id) => request(`/schedule/${id}/retry`, { method: "POST" }),
   uploadImage: async (file) => {
     const form = new FormData();
     form.append("file", file);

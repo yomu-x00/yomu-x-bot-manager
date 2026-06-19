@@ -164,6 +164,27 @@ def bulk_schedule_images(
     return {"created": len(created), "errors": errors}
 
 
+@router.post("/{post_id}/retry", response_model=ScheduledPostResponse)
+async def retry_post(
+    post_id: int,
+    conn: sqlite3.Connection = Depends(get_db),
+    encryption_key: bytes = Depends(get_key),
+):
+    """failed状態のスケジュール投稿を再投稿する。"""
+    repo = ScheduledPostRepository(conn)
+    row = repo.get_with_credentials(post_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Scheduled post not found")
+    if row["status"] != "failed":
+        raise HTTPException(status_code=409, detail="Post is not in failed status")
+
+    success = await post_scheduled_post(repo, conn, row, encryption_key)
+    if not success:
+        raise HTTPException(status_code=502, detail="Failed to post tweet")
+
+    return repo.get_by_id(post_id)
+
+
 @router.post("/{post_id}/post-now", response_model=ScheduledPostResponse)
 async def post_now(
     post_id: int,

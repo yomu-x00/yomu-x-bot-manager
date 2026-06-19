@@ -333,12 +333,202 @@
       color: var(--text);
       font-size: 13px;
     }
+
+    /* ===== Mobile header (hidden on desktop) ===== */
+    .mobile-header {
+      display: none;
+    }
+
+    /* ===== Mobile (≤768px) ===== */
+    @media (max-width: 768px) {
+      .app {
+        flex-direction: column;
+      }
+
+      /* Fixed top header */
+      .mobile-header {
+        display: flex;
+        position: sticky;
+        top: 0;
+        z-index: 150;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+
+      .mobile-header .menu-btn {
+        background: none;
+        border: none;
+        color: var(--text);
+        font-size: 22px;
+        cursor: pointer;
+        padding: 2px 6px;
+        flex-shrink: 0;
+        line-height: 1;
+      }
+
+      .mobile-header .mobile-title {
+        font-weight: 700;
+        font-size: 16px;
+        flex-shrink: 0;
+      }
+
+      .mobile-header select {
+        flex: 1;
+        min-width: 0;
+        padding: 7px 10px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        font-size: 13px;
+      }
+
+      /* Sidebar becomes a slide-in drawer */
+      .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 260px;
+        z-index: 200;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        overflow-y: auto;
+        padding-top: 0;
+      }
+
+      .sidebar.open {
+        transform: translateX(0);
+      }
+
+      /* Account bar inside drawer is hidden on mobile (we show it in mobile-header) */
+      .sidebar .account-bar {
+        display: none;
+      }
+
+      .sidebar h1 {
+        padding: 16px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .sidebar-close-btn {
+        display: flex !important;
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        font-size: 20px;
+        cursor: pointer;
+        padding: 0;
+        line-height: 1;
+      }
+
+      /* Dimmed overlay behind open sidebar */
+      .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.55);
+        z-index: 190;
+      }
+
+      .sidebar-overlay.visible {
+        display: block;
+      }
+
+      /* Main content: full width, less padding */
+      .main {
+        padding: 16px 14px;
+        min-height: 0;
+        flex: 1;
+      }
+
+      .main h2 {
+        font-size: 18px;
+        margin-bottom: 14px;
+      }
+
+      /* Tables: horizontal scroll */
+      .card {
+        padding: 14px 10px;
+        overflow-x: auto;
+      }
+
+      table {
+        min-width: 520px;
+      }
+
+      th, td {
+        padding: 8px 8px;
+        font-size: 13px;
+      }
+
+      /* Form rows: single column */
+      .form-row {
+        grid-template-columns: 1fr;
+        gap: 0;
+      }
+
+      /* Modals: bottom sheet */
+      .modal-overlay {
+        align-items: flex-end;
+        padding: 0;
+      }
+
+      .modal {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 20px 20px 0 0;
+        max-height: 92vh;
+        padding: 20px 18px;
+      }
+
+      /* Bigger touch targets */
+      .btn {
+        min-height: 40px;
+      }
+
+      /* Filter bar: wrap, full-width controls */
+      .filter-bar {
+        gap: 8px;
+      }
+
+      .filter-bar select,
+      .filter-bar input {
+        flex: 1;
+        min-width: 120px;
+      }
+
+      /* Stat card grid: 2 columns on mobile */
+      .card-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+
+      .stat-card .value {
+        font-size: 22px;
+      }
+    }
   </style>
 </head>
 <body>
+  <!-- Mobile top header (hidden on desktop via CSS) -->
+  <div class="mobile-header">
+    <button class="menu-btn" id="mobile-menu-btn">☰</button>
+    <span class="mobile-title">Bot Manager</span>
+    <select id="mobile-account-selector">
+      <option value="">Loading...</option>
+    </select>
+  </div>
+
   <div class="app">
-    <nav class="sidebar">
-      <h1>Bot Manager</h1>
+    <nav class="sidebar" id="sidebar">
+      <h1>Bot Manager <button class="sidebar-close-btn" id="sidebar-close" style="display:none">✕</button></h1>
       <div class="account-bar">
         <select id="account-selector">
           <option value="">Loading...</option>
@@ -347,11 +537,13 @@
       <a href="#dashboard" class="active" data-page="dashboard">Dashboard</a>
       <a href="#rules" data-page="rules">Rules</a>
       <a href="#schedule" data-page="schedule">Schedule</a>
+      <a href="#timeline" data-page="timeline">Timeline</a>
       <a href="#monitors" data-page="monitors">Monitors</a>
       <a href="#logs" data-page="logs">Logs</a>
       <hr class="sidebar-sep">
       <a href="#accounts" data-page="accounts">Accounts</a>
     </nav>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
     <main class="main" id="app"></main>
   </div>
   <script type="module" src="/src/main.js"></script>

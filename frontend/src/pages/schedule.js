@@ -220,20 +220,41 @@ function showCsvImportModal(accounts, onImport) {
   };
 }
 
-function showPostPreview(post) {
+function showPostPreview(post, account) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
-  const images = (post.image_paths || []).map((p) => {
+
+  const text = (post.content || "").replace(/\n/g, "<br>");
+  const mediaHtml = (post.image_paths || []).map((p) => {
     const filename = p.split("/").pop();
-    return `<img src="/api/uploads/${filename}" style="max-width:100%;border-radius:6px;margin-bottom:8px">`;
+    return `<img src="/api/uploads/${filename}" style="max-width:100%;border-radius:12px;display:block;margin-top:8px">`;
   }).join("");
+
+  const statusColor = { posted: "var(--success)", failed: "var(--danger)", pending: "var(--warning)" }[post.status] || "var(--text-secondary)";
+  const scheduledTime = new Date(post.scheduled_at).toLocaleString("ja-JP");
+  const postedTime = post.posted_at ? new Date(post.posted_at).toLocaleString("ja-JP") : null;
+  const name = account?.name || "";
+  const username = account?.username || "";
+  const avatar = "";
+
   overlay.innerHTML = `
-    <div class="modal" style="max-width:480px;width:90vw">
-      <h3>投稿プレビュー</h3>
-      <div style="white-space:pre-wrap;margin-bottom:12px">${post.content || "(本文なし)"}</div>
-      ${images || `<div class="empty-state">画像なし</div>`}
-      <div style="font-size:12px;color:#888;margin-top:8px">
-        予定時刻: ${new Date(post.scheduled_at).toLocaleString()} / ステータス: ${post.status}
+    <div class="modal" style="max-width:500px;width:90vw">
+      <h3 style="margin-bottom:16px">投稿プレビュー</h3>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:16px;padding:16px">
+        <div style="display:flex;gap:12px">
+          <div style="width:40px;height:40px;border-radius:50%;background:var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px">🐦</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:15px">${name || "アカウント"}</div>
+            ${username ? `<div style="color:var(--text-secondary);font-size:13px">@${username}</div>` : ""}
+            <div style="margin-top:10px;line-height:1.6;word-break:break-word;font-size:15px">${text || "<span style='color:var(--text-secondary)'>(本文なし)</span>"}</div>
+            ${mediaHtml}
+            <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:12px;font-size:13px;color:var(--text-secondary)">
+              <span>📅 予定: ${scheduledTime}</span>
+              ${postedTime ? `<span>✅ 投稿: ${postedTime}</span>` : ""}
+              <span style="color:${statusColor};font-weight:600">${post.status}</span>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="modal-actions">
         <button class="btn" id="preview-close">閉じる</button>
@@ -370,6 +391,7 @@ export async function renderSchedule(container, accountId) {
           <td><span class="badge ${p.status === "posted" ? "badge-success" : p.status === "failed" ? "badge-danger" : "badge-warning"}">${p.status}</span></td>
           <td>
             ${p.status === "pending" ? `<button class="btn btn-sm post-now" data-id="${p.id}">今すぐ投稿</button>` : ""}
+            ${p.status === "failed" ? `<button class="btn btn-sm retry-post" data-id="${p.id}" style="background:var(--warning);color:#000">再投稿</button>` : ""}
             <button class="btn btn-sm btn-danger delete-post" data-id="${p.id}">Delete</button>
           </td>
         </tr>
@@ -415,9 +437,10 @@ export async function renderSchedule(container, accountId) {
 
       tbody.querySelectorAll(".post-row").forEach((row) => {
         row.onclick = (e) => {
-          if (e.target.closest(".delete-post") || e.target.closest(".post-now") || e.target.closest("input[type=checkbox]")) return;
+          if (e.target.closest(".delete-post") || e.target.closest(".post-now") || e.target.closest(".retry-post") || e.target.closest("input[type=checkbox]")) return;
           const post = posts.find((p) => p.id === Number(row.dataset.id));
-          showPostPreview(post);
+          const account = accounts.find((a) => a.id === post?.account_id);
+          showPostPreview(post, account);
         };
       });
 
@@ -442,6 +465,22 @@ export async function renderSchedule(container, accountId) {
             alert("投稿に失敗しました: " + err.message);
             btn.disabled = false;
             btn.textContent = "今すぐ投稿";
+          }
+        };
+      });
+
+      tbody.querySelectorAll(".retry-post").forEach((btn) => {
+        btn.onclick = async () => {
+          if (!confirm("この投稿を再投稿しますか？")) return;
+          btn.disabled = true;
+          btn.textContent = "投稿中...";
+          try {
+            await api.retryPost(btn.dataset.id);
+            loadPosts(document.getElementById("filter-status").value);
+          } catch (err) {
+            alert("再投稿に失敗しました: " + err.message);
+            btn.disabled = false;
+            btn.textContent = "再投稿";
           }
         };
       });

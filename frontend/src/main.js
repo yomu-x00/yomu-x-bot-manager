@@ -10,6 +10,7 @@ import { renderRules } from "./pages/rules.js";
 import { renderSchedule } from "./pages/schedule.js";
 import { renderMonitor } from "./pages/monitor.js";
 import { renderLogs } from "./pages/logs.js";
+import { renderTimeline } from "./pages/timeline.js";
 
 const routes = {
   dashboard: renderDashboard,
@@ -18,6 +19,7 @@ const routes = {
   schedule: renderSchedule,
   monitors: renderMonitor,
   logs: renderLogs,
+  timeline: renderTimeline,
 };
 
 // Pages that don't filter by account
@@ -26,8 +28,32 @@ const globalPages = new Set(["accounts"]);
 let currentPage = "dashboard";
 let currentAccountId = null;
 
+// ===== Mobile sidebar drawer =====
+const sidebar = document.getElementById("sidebar");
+const sidebarOverlay = document.getElementById("sidebar-overlay");
+const mobileMenuBtn = document.getElementById("mobile-menu-btn");
+const sidebarCloseBtn = document.getElementById("sidebar-close");
+
+function openSidebar() {
+  sidebar.classList.add("open");
+  sidebarOverlay.classList.add("visible");
+  document.body.style.overflow = "hidden";
+}
+
+function closeSidebar() {
+  sidebar.classList.remove("open");
+  sidebarOverlay.classList.remove("visible");
+  document.body.style.overflow = "";
+}
+
+mobileMenuBtn?.addEventListener("click", openSidebar);
+sidebarCloseBtn?.addEventListener("click", closeSidebar);
+sidebarOverlay?.addEventListener("click", closeSidebar);
+
 function navigate(page) {
   currentPage = page;
+  closeSidebar();
+
   const app = document.getElementById("app");
   const renderer = routes[page];
   if (!renderer) return;
@@ -41,35 +67,44 @@ function navigate(page) {
   });
 }
 
+// ===== Account selector (desktop sidebar + mobile header synced) =====
 async function initAccountSelector() {
   const selector = document.getElementById("account-selector");
+  const mobileSelector = document.getElementById("mobile-account-selector");
+
   let accounts = [];
-  try {
-    accounts = await api.getAccounts();
-  } catch {}
+  try { accounts = await api.getAccounts(); } catch {}
 
-  if (accounts.length === 0) {
-    selector.innerHTML = `<option value="">アカウントなし</option>`;
-    currentAccountId = null;
-  } else {
-    selector.innerHTML = accounts
-      .map((a) => `<option value="${a.id}">@${a.username}</option>`)
-      .join("");
+  const optionsHtml = accounts.length === 0
+    ? `<option value="">アカウントなし</option>`
+    : accounts.map((a) => `<option value="${a.id}">@${a.username}</option>`).join("");
 
+  selector.innerHTML = optionsHtml;
+  mobileSelector.innerHTML = optionsHtml;
+
+  if (accounts.length > 0) {
     const saved = Number(localStorage.getItem("selectedAccountId"));
     currentAccountId = accounts.some((a) => a.id === saved) ? saved : accounts[0].id;
     selector.value = currentAccountId;
+    mobileSelector.value = currentAccountId;
+  } else {
+    currentAccountId = null;
   }
 
-  selector.addEventListener("change", () => {
-    currentAccountId = selector.value ? Number(selector.value) : null;
+  function onAccountChange(value) {
+    currentAccountId = value ? Number(value) : null;
     if (currentAccountId) {
       localStorage.setItem("selectedAccountId", currentAccountId);
     } else {
       localStorage.removeItem("selectedAccountId");
     }
+    selector.value = currentAccountId ?? "";
+    mobileSelector.value = currentAccountId ?? "";
     navigate(currentPage);
-  });
+  }
+
+  selector.addEventListener("change", (e) => onAccountChange(e.target.value));
+  mobileSelector.addEventListener("change", (e) => onAccountChange(e.target.value));
 }
 
 document.querySelectorAll(".sidebar a").forEach((link) => {
