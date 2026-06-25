@@ -250,11 +250,16 @@ export async function renderTimeline(container, accountId) {
     listEl.innerHTML = `<div class="empty-state">読み込み中...</div>`;
   }
 
+  const isMounted = () => container.isConnected;
+
   async function fetchAndMerge(count = 20) {
+    if (!isMounted()) return;
     statusEl.textContent = "取得中...";
-    document.getElementById("refresh-btn").disabled = true;
+    const refreshBtn = document.getElementById("refresh-btn");
+    if (refreshBtn) refreshBtn.disabled = true;
     try {
       const resp = await api.getAccountTimeline(accountId, count);
+      if (!isMounted()) return;
       const raw = resp.tweets;
       const incoming = Array.isArray(raw) ? raw : (raw?.data ?? []);
       const before = currentTweets.length;
@@ -266,12 +271,16 @@ export async function renderTimeline(container, accountId) {
         ? `${added} 件追加（計 ${currentTweets.length} 件）`
         : `最新（計 ${currentTweets.length} 件）`;
     } catch (err) {
+      if (!isMounted()) return;
       statusEl.textContent = "取得失敗";
       if (currentTweets.length === 0) {
         listEl.innerHTML = `<div class="empty-state">読み込みに失敗しました: ${err.message}</div>`;
       }
     } finally {
-      document.getElementById("refresh-btn").disabled = false;
+      if (isMounted()) {
+        const btn = document.getElementById("refresh-btn");
+        if (btn) btn.disabled = false;
+      }
     }
   }
 
