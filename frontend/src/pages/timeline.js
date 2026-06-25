@@ -1,11 +1,9 @@
 import { api } from "../api.js";
 
 const CACHE_PREFIX = "timeline_cache_";
-const PIN_KEY_PREFIX = "pinned_tweet_";
 const CACHE_MAX = 200;
 
 function cacheKey(accountId) { return `${CACHE_PREFIX}${accountId}`; }
-function pinKey(accountId) { return `${PIN_KEY_PREFIX}${accountId}`; }
 
 function loadCache(accountId) {
   try { return JSON.parse(localStorage.getItem(cacheKey(accountId)) || "[]"); } catch { return []; }
@@ -13,15 +11,6 @@ function loadCache(accountId) {
 
 function saveCache(accountId, tweets) {
   try { localStorage.setItem(cacheKey(accountId), JSON.stringify(tweets.slice(0, CACHE_MAX))); } catch {}
-}
-
-function getPinnedId(accountId) {
-  return localStorage.getItem(pinKey(accountId)) || null;
-}
-
-function setPinnedId(accountId, tweetId) {
-  if (tweetId) localStorage.setItem(pinKey(accountId), tweetId);
-  else localStorage.removeItem(pinKey(accountId));
 }
 
 function mergeTweets(existing, incoming) {
@@ -47,10 +36,9 @@ function showToast(msg, isError = false) {
   setTimeout(() => { t.style.opacity = "0"; setTimeout(() => t.remove(), 300); }, 3000);
 }
 
-function tweetCardHtml(t, pinnedId) {
+function tweetCardHtml(t) {
   const text = (t.text || t.full_text || "").replace(/\n/g, "<br>");
   const tweetId = t.id || t.id_str || "";
-  const isPinned = pinnedId === tweetId;
   const time = t.createdAtLocal || (t.createdAtISO ? new Date(t.createdAtISO).toLocaleString("ja-JP") : "");
   const metrics = t.metrics || {};
   const likes = metrics.likes ?? t.favorite_count ?? "";
@@ -75,26 +63,17 @@ function tweetCardHtml(t, pinnedId) {
   const name = author.name || "";
   const screen = author.screenName || "";
 
-  const pinBtnStyle = isPinned
-    ? `background:#ffd400;color:#000`
-    : `background:var(--border);color:var(--text)`;
-  const pinBtnLabel = isPinned ? "📌 固定中" : "📌 固定";
-
   return `
-    <div class="card tweet-card" data-tweet-id="${tweetId}" style="margin-bottom:12px;padding:16px${isPinned ? ";border-color:var(--warning);border-width:2px" : ""}">
-      ${isPinned ? `<div style="font-size:11px;color:var(--warning);font-weight:700;margin-bottom:8px">📌 プロフィールに固定</div>` : ""}
+    <div class="card tweet-card" data-tweet-id="${tweetId}" style="margin-bottom:12px;padding:16px">
       <div style="display:flex;gap:12px">
         ${avatar ? `<img src="${avatar}" style="width:40px;height:40px;border-radius:50%;flex-shrink:0;object-fit:cover">` : `<div style="width:40px;height:40px;border-radius:50%;background:var(--border);flex-shrink:0"></div>`}
         <div style="flex:1;min-width:0">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;flex-wrap:wrap">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
             <div>
               ${name ? `<span style="font-weight:700;font-size:15px">${name}</span>` : ""}
               ${screen ? `<span style="color:var(--text-secondary);font-size:13px;margin-left:4px">@${screen}</span>` : ""}
             </div>
-            <div style="display:flex;gap:4px;flex-shrink:0">
-              <button class="btn btn-sm pin-tweet" data-tweet-id="${tweetId}" data-pinned="${isPinned}" style="${pinBtnStyle};font-size:11px;padding:3px 8px">${pinBtnLabel}</button>
-              <button class="btn btn-sm btn-danger del-tweet" data-tweet-id="${tweetId}" style="font-size:11px;padding:3px 8px">削除</button>
-            </div>
+            <button class="btn btn-sm btn-danger del-tweet" data-tweet-id="${tweetId}" style="flex-shrink:0;font-size:11px;padding:3px 8px">削除</button>
           </div>
           <div style="margin-top:6px;line-height:1.6;word-break:break-word;white-space:pre-wrap;font-size:15px">${text}</div>
           ${mediaHtml}
@@ -110,45 +89,12 @@ function tweetCardHtml(t, pinnedId) {
     </div>`;
 }
 
-function renderTweets(listEl, tweets, accountId, onDelete, onPinChange) {
-  const pinnedId = getPinnedId(accountId);
-  // 固定ツイートを先頭に
-  const sorted = pinnedId
-    ? [...tweets.filter((t) => t.id === pinnedId), ...tweets.filter((t) => t.id !== pinnedId)]
-    : tweets;
-
-  if (sorted.length === 0) {
+function renderTweets(listEl, tweets, accountId, onDelete) {
+  if (tweets.length === 0) {
     listEl.innerHTML = `<div class="empty-state">ツイートがありません</div>`;
     return;
   }
-
-  listEl.innerHTML = sorted.map((t) => tweetCardHtml(t, pinnedId)).join("");
-
-  listEl.querySelectorAll(".pin-tweet").forEach((btn) => {
-    btn.onclick = async () => {
-      const tid = btn.dataset.tweetId;
-      const wasPinned = btn.dataset.pinned === "true";
-      btn.disabled = true;
-      btn.textContent = "...";
-      try {
-        if (wasPinned) {
-          await api.unpinTweet(accountId, tid);
-          setPinnedId(accountId, null);
-          showToast("固定を解除しました");
-        } else {
-          await api.pinTweet(accountId, tid);
-          setPinnedId(accountId, tid);
-          showToast("ツイートを固定しました");
-        }
-        if (onPinChange) onPinChange();
-      } catch (err) {
-        btn.disabled = false;
-        btn.textContent = wasPinned ? "📌 固定中" : "📌 固定";
-        showToast("失敗: " + err.message, true);
-      }
-    };
-  });
-
+  listEl.innerHTML = tweets.map((t) => tweetCardHtml(t)).join("");
   listEl.querySelectorAll(".del-tweet").forEach((btn) => {
     btn.onclick = async () => {
       if (!confirm("このツイートを削除しますか？")) return;
@@ -221,6 +167,7 @@ export async function renderTimeline(container, accountId) {
 
   const listEl = document.getElementById("timeline-list");
   const statusEl = document.getElementById("cache-status");
+  const isMounted = () => container.isConnected;
 
   document.getElementById("test-tweet-btn").onclick = () => {
     if (!accountId) { alert("アカウントを選択してください"); return; }
@@ -239,18 +186,12 @@ export async function renderTimeline(container, accountId) {
     saveCache(accountId, currentTweets);
   }
 
-  function onPinChange() {
-    renderTweets(listEl, currentTweets, accountId, onDelete, onPinChange);
-  }
-
   if (currentTweets.length > 0) {
-    renderTweets(listEl, currentTweets, accountId, onDelete, onPinChange);
+    renderTweets(listEl, currentTweets, accountId, onDelete);
     statusEl.textContent = `キャッシュ ${currentTweets.length} 件`;
   } else {
     listEl.innerHTML = `<div class="empty-state">読み込み中...</div>`;
   }
-
-  const isMounted = () => container.isConnected;
 
   async function fetchAndMerge(count = 20) {
     if (!isMounted()) return;
@@ -265,7 +206,7 @@ export async function renderTimeline(container, accountId) {
       const before = currentTweets.length;
       currentTweets = mergeTweets(currentTweets, incoming);
       saveCache(accountId, currentTweets);
-      renderTweets(listEl, currentTweets, accountId, onDelete, onPinChange);
+      renderTweets(listEl, currentTweets, accountId, onDelete);
       const added = currentTweets.length - before;
       statusEl.textContent = added > 0
         ? `${added} 件追加（計 ${currentTweets.length} 件）`

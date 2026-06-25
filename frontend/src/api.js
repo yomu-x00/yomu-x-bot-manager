@@ -37,8 +37,6 @@ export const api = {
   cookieHealth: () => request("/accounts/cookie-health"),
   getAccountTimeline: (accountId, count = 20) => request(`/accounts/${accountId}/timeline?count=${count}`),
   deleteTweet: (accountId, tweetId) => request(`/accounts/${accountId}/tweets/${tweetId}`, { method: "DELETE" }),
-  pinTweet: (accountId, tweetId) => request(`/accounts/${accountId}/tweets/${tweetId}/pin`, { method: "POST" }),
-  unpinTweet: (accountId, tweetId) => request(`/accounts/${accountId}/tweets/${tweetId}/pin`, { method: "DELETE" }),
   postTweet: (accountId, text) => request(`/accounts/${accountId}/tweet`, { method: "POST", body: { text } }),
 
   // Rules

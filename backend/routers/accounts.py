@@ -10,7 +10,7 @@ from dependencies import get_db, get_key
 from jobs import sync_account_jobs
 from models import AccountCreate, AccountResponse, AccountUpdate, TweetPostRequest
 from repositories import AccountRepository
-from executor import apply_tweet_suffix, verify_credentials, post_tweet, get_user_tweets, delete_tweet, pin_tweet, unpin_tweet
+from executor import apply_tweet_suffix, verify_credentials, post_tweet, get_user_tweets, delete_tweet
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
@@ -190,45 +190,6 @@ async def verify_account(
     result = await verify_credentials(auth_token, ct0)
     return {"valid": result.success, "output": result.output, "error": result.error}
 
-
-@router.post("/{account_id}/tweets/{tweet_id}/pin")
-async def pin_account_tweet(
-    account_id: int,
-    tweet_id: str,
-    conn: sqlite3.Connection = Depends(get_db),
-    key: bytes = Depends(get_key),
-):
-    """指定アカウントのツイートをプロフィールに固定する。"""
-    repo = AccountRepository(conn)
-    row = repo.get_credentials(account_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Account not found")
-    auth_token = decrypt(row["auth_token"], key)
-    ct0 = decrypt(row["ct0"], key)
-    result = await pin_tweet(auth_token, ct0, tweet_id)
-    if not result.success:
-        raise HTTPException(status_code=500, detail=result.error)
-    return {"status": "pinned", "tweet_id": tweet_id}
-
-
-@router.delete("/{account_id}/tweets/{tweet_id}/pin")
-async def unpin_account_tweet(
-    account_id: int,
-    tweet_id: str,
-    conn: sqlite3.Connection = Depends(get_db),
-    key: bytes = Depends(get_key),
-):
-    """指定アカウントのツイートの固定を解除する。"""
-    repo = AccountRepository(conn)
-    row = repo.get_credentials(account_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Account not found")
-    auth_token = decrypt(row["auth_token"], key)
-    ct0 = decrypt(row["ct0"], key)
-    result = await unpin_tweet(auth_token, ct0, tweet_id)
-    if not result.success:
-        raise HTTPException(status_code=500, detail=result.error)
-    return {"status": "unpinned", "tweet_id": tweet_id}
 
 
 @router.delete("/{account_id}/tweets/{tweet_id}")
