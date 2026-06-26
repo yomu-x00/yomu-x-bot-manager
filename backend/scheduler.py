@@ -4,8 +4,10 @@ Refactored to delegate all DB access to ScheduledPostRepository so this
 module only contains scheduling/repeat logic.
 """
 
+import asyncio
 import json
 import logging
+import os
 import random
 import sqlite3
 from datetime import datetime, timedelta
@@ -15,6 +17,12 @@ from executor import apply_tweet_suffix, post_tweet
 from repositories.schedule_repository import ScheduledPostRepository
 
 logger = logging.getLogger(__name__)
+
+# 起動時バッチ投稿防止: この分数より古い pending はスキップ（0 で無効）
+STALE_POST_MINUTES = int(os.getenv("STALE_POST_MINUTES", "60"))
+# twitter-cli 一時エラー時のリトライ設定
+POST_MAX_RETRIES = int(os.getenv("POST_MAX_RETRIES", "3"))
+POST_RETRY_DELAY = float(os.getenv("POST_RETRY_DELAY", "10"))
 
 
 async def post_scheduled_post(repo: ScheduledPostRepository, conn: sqlite3.Connection, post, encryption_key: bytes) -> bool:
@@ -29,16 +37,25 @@ async def post_scheduled_post(repo: ScheduledPostRepository, conn: sqlite3.Conne
 
         image_paths = json.loads(post["image_paths"]) if isinstance(post["image_paths"], str) else post["image_paths"]
         content = apply_tweet_suffix(post["content"], post.get("tweet_suffix"))
-        result = await post_tweet(auth_token, ct0, content, images=image_paths)
 
-        if result.success:
+        # リトライ付き投稿（twitter-cli の一時エラー対策）
+        result = None
+        for attempt in range(1, POST_MAX_RETRIES + 1):
+            result = await post_tweet(auth_token, ct0, content, images=image_paths)
+            if result.success:
+                break
+            logger.warning("Post %d attempt %d/%d failed: %s", post_id, attempt, POST_MAX_RETRIES, result.error)
+            if attempt < POST_MAX_RETRIES:
+                await asyncio.sleep(POST_RETRY_DELAY)
+
+        if result and result.success:
             repo.mark_posted(post_id, datetime.now().isoformat())
             logger.info("Posted scheduled post %d", post_id)
             _schedule_next_repeat(conn, post)
             return True
         else:
             repo.mark_failed(post_id)
-            logger.warning("Failed to post scheduled post %d: %s", post_id, result.error)
+            logger.warning("Failed to post scheduled post %d after %d attempts: %s", post_id, POST_MAX_RETRIES, result.error if result else "unknown")
             return False
 
     except Exception:
@@ -53,8 +70,32 @@ async def process_pending_posts(conn: sqlite3.Connection, encryption_key: bytes)
     Returns the number of posts processed.
     """
     repo = ScheduledPostRepository(conn)
-    now = datetime.now().isoformat()
-    posts = repo.list_pending_due(now)
+    now = datetime.now()
+    posts = repo.list_pending_due(now.isoformat())
+
+    # 古すぎる pending はスキップ（起動時バッチ投稿防止）
+    if STALE_POST_MINUTES > 0:
+        stale_threshold = now - timedelta(minutes=STALE_POST_MINUTES)
+        fresh, stale = [], []
+        for post in posts:
+            try:
+                scheduled = datetime.fromisoformat(post["scheduled_at"])
+            except (ValueError, TypeError):
+                fresh.append(post)
+                continue
+            if scheduled < stale_threshold:
+                stale.append(post)
+            else:
+                fresh.append(post)
+
+        if stale:
+            logger.warning(
+                "Skipping %d stale pending post(s) (older than %d min): ids=%s",
+                len(stale), STALE_POST_MINUTES, [p["id"] for p in stale],
+            )
+            for post in stale:
+                repo.mark_failed(post["id"])
+        posts = fresh
 
     for post in posts:
         await post_scheduled_post(repo, conn, post, encryption_key)

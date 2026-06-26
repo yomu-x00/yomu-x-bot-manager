@@ -2,7 +2,7 @@ services:
   twitter-backend:
     build: ./backend
     container_name: twitter-backend
-    restart: unless-stopped
+    restart: always
     volumes:
       - ./data:/app/data
     environment:
@@ -11,12 +11,15 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - STALE_POST_MINUTES=${STALE_POST_MINUTES:-60}
+      - POST_MAX_RETRIES=${POST_MAX_RETRIES:-3}
+      - POST_RETRY_DELAY=${POST_RETRY_DELAY:-10}
     # ポートはコンテナ内のみ。CF Tunnel 経由でのみアクセス
 
   twitter-frontend:
     build: ./frontend
     container_name: twitter-frontend
-    restart: unless-stopped
+    restart: always
     ports:
       - "127.0.0.1:5173:80"        # localhost のみバインド（CF Tunnel 用）
       - "100.111.233.57:5173:80"   # Tailscale 経由アクセス用（200MBアップロード対応）
@@ -25,7 +28,7 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    restart: unless-stopped
+    restart: always
     command: tunnel --no-autoupdate run --token ${CF_TUNNEL_TOKEN}
     depends_on:
       - twitter-frontend
