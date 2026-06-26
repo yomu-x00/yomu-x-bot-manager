@@ -82,7 +82,7 @@ STALE_POST_MINUTES=60  # .env または docker-compose.yml で変更可
 
 ---
 
-## 今後実装予定の対策
+## 実施済み対策（追加）
 
 ### A. Docker healthcheck の追加
 
@@ -101,7 +101,7 @@ healthcheck:
 
 healthcheck が3回連続失敗するとコンテナが `unhealthy` になり、`restart: always` と組み合わせることで自動再起動される。
 
-### B. healthcheck.py によるスケジューラー死活確認
+### B. healthcheck.py によるスケジューラー死活確認（実装済み）
 
 HTTP ではなく「最後のスケジューラー実行が N 分以内か」を確認するスクリプト。  
 APScheduler が内部でフリーズした場合も検知できる。
@@ -123,6 +123,10 @@ if datetime.now() - last_dt > timedelta(hours=2):
 sys.exit(0)
 ```
 
+---
+
+## 今後実装予定の対策
+
 ### C. 外形監視（UptimeRobot）
 
 無料プランで `/api/health` エンドポイントを5分ごとに監視し、  
@@ -132,7 +136,7 @@ sys.exit(0)
 - 期待レスポンス: `{"status": "ok", ...}`
 - 通知先: メール or Discord Webhook
 
-### D. メインループの例外保護
+### D. メインループの例外保護（実装済み）
 
 現在 uvicorn + FastAPI のプロセスは例外で落ちることはほぼないが、  
 APScheduler のジョブ例外は `main.py` の `_scheduler_job` で既にキャッチ済み：
@@ -168,7 +172,7 @@ OS 起動
   └─ systemd: twitter-bot.service → docker compose up -d
        └─ Docker: restart: always → クラッシュ・停止時に自動再起動
             └─ Docker: live-restore → daemon 再起動中もコンテナ維持
-                 └─ healthcheck (予定) → 内部フリーズを検知して再起動
+                 └─ healthcheck → HTTP + heartbeat で内部フリーズを検知して再起動 ✅
                       └─ UptimeRobot (予定) → 外部から死活監視・アラート
 ```
 
