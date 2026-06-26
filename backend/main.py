@@ -12,6 +12,7 @@ import logging
 import os
 import sqlite3
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -43,6 +44,16 @@ logger = logging.getLogger(__name__)
 FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
 
 
+_HEARTBEAT_FILE = get_db_path().parent / ".scheduler_heartbeat"
+
+
+def _write_heartbeat() -> None:
+    try:
+        _HEARTBEAT_FILE.write_text(datetime.now().isoformat())
+    except Exception:
+        pass
+
+
 async def _scheduler_job() -> None:
     """Periodic job: process pending scheduled posts."""
     try:
@@ -51,6 +62,7 @@ async def _scheduler_job() -> None:
         count = await process_pending_posts(conn, key)
         logger.info("Scheduler processed %d posts", count)
         conn.close()
+        _write_heartbeat()
     except Exception:
         logger.exception("Scheduler job failed")
 
@@ -122,8 +134,23 @@ async def lifespan(app: FastAPI):
     init_db(db_path)
     (db_path.parent / "uploads").mkdir(parents=True, exist_ok=True)
     sync_account_jobs()
-    scheduler.add_job(_scheduler_job, "interval", minutes=1, id="scheduler")
-    scheduler.add_job(_cookie_health_job, "cron", hour=9, minute=0, id="cookie_health")
+    scheduler.add_job(
+        _scheduler_job,
+        "interval",
+        minutes=1,
+        id="scheduler",
+        misfire_grace_time=30,  # 30秒以内の遅延は正常実行
+        coalesce=True,          # 溜まったジョブは1回にまとめる
+    )
+    scheduler.add_job(
+        _cookie_health_job,
+        "cron",
+        hour=9,
+        minute=0,
+        id="cookie_health",
+        misfire_grace_time=3600,  # 1時間以内なら遅れても実行
+        coalesce=True,
+    )
     scheduler.start()
     logger.info("Application started")
     yield

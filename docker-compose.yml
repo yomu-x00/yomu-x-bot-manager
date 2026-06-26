@@ -14,6 +14,12 @@ services:
       - STALE_POST_MINUTES=${STALE_POST_MINUTES:-60}
       - POST_MAX_RETRIES=${POST_MAX_RETRIES:-3}
       - POST_RETRY_DELAY=${POST_RETRY_DELAY:-10}
+    healthcheck:
+      test: ["CMD", "python", "/app/healthcheck.py"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     # ポートはコンテナ内のみ。CF Tunnel 経由でのみアクセス
 
   twitter-frontend:
