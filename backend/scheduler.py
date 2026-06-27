@@ -30,12 +30,14 @@ async def post_scheduled_post(repo: ScheduledPostRepository, conn: sqlite3.Conne
 
     Returns True if the post succeeded.
     """
+    if not isinstance(post, dict):
+        post = dict(post)
     post_id = post["id"]
     try:
         auth_token = decrypt(post["auth_token"], encryption_key)
         ct0 = decrypt(post["ct0"], encryption_key)
 
-        image_paths = json.loads(post["image_paths"]) if isinstance(post["image_paths"], str) else post["image_paths"]
+        image_paths = json.loads(post["image_paths"]) if isinstance(post["image_paths"], str) else (post["image_paths"] or [])
         content = apply_tweet_suffix(post["content"], post.get("tweet_suffix"))
 
         # リトライ付き投稿（twitter-cli の一時エラー対策）
