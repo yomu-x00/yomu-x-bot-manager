@@ -71,6 +71,7 @@ function navigate(page) {
 async function initAccountSelector() {
   const selector = document.getElementById("account-selector");
   const mobileSelector = document.getElementById("mobile-account-selector");
+  const statusEl = document.getElementById("account-status");
 
   let accounts = [];
   try { accounts = await api.getAccounts(); } catch {}
@@ -82,11 +83,21 @@ async function initAccountSelector() {
   selector.innerHTML = optionsHtml;
   mobileSelector.innerHTML = optionsHtml;
 
+  function updateStatus(accountId) {
+    if (!statusEl) return;
+    const account = accounts.find((a) => a.id === Number(accountId));
+    if (!account) { statusEl.innerHTML = ""; statusEl.className = ""; return; }
+    const active = account.is_active;
+    statusEl.className = active ? "active" : "inactive";
+    statusEl.innerHTML = `<span class="status-dot"></span><span class="status-label">${active ? "投稿有効" : "停止中"}</span>`;
+  }
+
   if (accounts.length > 0) {
     const saved = Number(localStorage.getItem("selectedAccountId"));
     currentAccountId = accounts.some((a) => a.id === saved) ? saved : accounts[0].id;
     selector.value = currentAccountId;
     mobileSelector.value = currentAccountId;
+    updateStatus(currentAccountId);
   } else {
     currentAccountId = null;
   }
@@ -100,6 +111,7 @@ async function initAccountSelector() {
     }
     selector.value = currentAccountId ?? "";
     mobileSelector.value = currentAccountId ?? "";
+    updateStatus(currentAccountId);
     navigate(currentPage);
   }
 

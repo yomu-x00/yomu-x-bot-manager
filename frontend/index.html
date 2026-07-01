@@ -88,6 +88,26 @@
       border-color: var(--primary);
     }
 
+    #account-status {
+      margin-top: 6px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    #account-status .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    #account-status.active .status-dot { background: var(--success); }
+    #account-status.inactive .status-dot { background: var(--danger); }
+    #account-status.active .status-label { color: var(--success); }
+    #account-status.inactive .status-label { color: var(--danger); }
+
     .sidebar-sep {
       border: none;
       border-top: 1px solid var(--border);
@@ -534,6 +554,7 @@
         <select id="account-selector">
           <option value="">Loading...</option>
         </select>
+        <div id="account-status"></div>
       </div>
       <a href="#dashboard" class="active" data-page="dashboard">Dashboard</a>
       <a href="#rules" data-page="rules">Rules</a>
