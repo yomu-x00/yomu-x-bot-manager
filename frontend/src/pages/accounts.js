@@ -64,7 +64,12 @@ export async function renderAccounts(container) {
         <tr>
           <td>${a.name}</td>
           <td>@${a.username}</td>
-          <td><span class="badge ${a.is_active ? "badge-success" : "badge-danger"}">${a.is_active ? "Active" : "Inactive"}</span></td>
+          <td>
+            <button class="btn btn-sm toggle-btn" data-id="${a.id}" data-active="${a.is_active}"
+              style="background:${a.is_active ? "var(--success,#27ae60)" : "var(--danger,#e74c3c)"};color:#fff;min-width:64px">
+              ${a.is_active ? "有効" : "停止中"}
+            </button>
+          </td>
           <td>${a.interval_minutes}分</td>
           <td>${new Date(a.created_at).toLocaleDateString()}</td>
           <td>
@@ -75,6 +80,21 @@ export async function renderAccounts(container) {
           </td>
         </tr>
       `).join("");
+
+      tbody.querySelectorAll(".toggle-btn").forEach((btn) => {
+        btn.onclick = async () => {
+          const isActive = btn.dataset.active === "true";
+          btn.textContent = "...";
+          btn.disabled = true;
+          try {
+            await api.updateAccount(btn.dataset.id, { is_active: !isActive });
+            loadAccounts();
+          } catch {
+            btn.textContent = isActive ? "有効" : "停止中";
+            btn.disabled = false;
+          }
+        };
+      });
 
       tbody.querySelectorAll(".verify-btn").forEach((btn) => {
         btn.onclick = async () => {
