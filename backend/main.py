@@ -73,7 +73,7 @@ async def _cookie_health_job() -> None:
         conn = get_connection(get_db_path())
         key = get_encryption_key()
         repo = AccountRepository(conn)
-        accounts = repo.list_all()
+        accounts = [a for a in repo.list_all() if a["is_active"]]
         invalid = []
         for account in accounts:
             row = repo.get_credentials(account["id"])
