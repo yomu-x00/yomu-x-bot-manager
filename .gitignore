@@ -12,6 +12,11 @@ dist/
 # Data
 data/*.db
 data/*.db-journal
+data/uploads/
+data/.scheduler_heartbeat
+
+# Logs
+*.log
 
 # Environment
 .env
