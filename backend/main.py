@@ -24,6 +24,7 @@ from crypto import decrypt, get_encryption_key
 from db import get_connection, init_db
 from dependencies import get_db_path
 from executor import verify_credentials
+from bluesky_executor import verify_bluesky
 from jobs import scheduler, sync_account_jobs
 from notify import send_discord_alert
 from repositories import AccountRepository
@@ -77,9 +78,12 @@ async def _cookie_health_job() -> None:
         invalid = []
         for account in accounts:
             row = repo.get_credentials(account["id"])
-            auth_token = decrypt(row["auth_token"], key)
-            ct0 = decrypt(row["ct0"], key)
-            result = await verify_credentials(auth_token, ct0)
+            token = decrypt(row["auth_token"], key)
+            ct0_or_pass = decrypt(row["ct0"], key)
+            if row.get("platform") == "bluesky":
+                result = await verify_bluesky(token, ct0_or_pass)
+            else:
+                result = await verify_credentials(token, ct0_or_pass)
             if not result.success:
                 invalid.append(account["username"])
         conn.close()

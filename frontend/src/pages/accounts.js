@@ -1,16 +1,32 @@
 import { api } from "../api.js";
 
 function accountFormHtml(account = null) {
+  const platform = account?.platform || "twitter";
+  const isBluesky = platform === "bluesky";
   return `
+    <div class="form-group">
+      <label>プラットフォーム</label>
+      <select id="f-platform" onchange="
+        const bs = this.value === 'bluesky';
+        document.getElementById('f-token-label').textContent = bs ? 'Identifier (handle / メールアドレス)' : 'auth_token';
+        document.getElementById('f-ct0-label').textContent = bs ? 'App Password' : 'ct0';
+        document.getElementById('f-username-group').style.display = bs ? 'none' : '';
+      ">
+        <option value="twitter" ${!isBluesky ? "selected" : ""}>X (Twitter)</option>
+        <option value="bluesky" ${isBluesky ? "selected" : ""}>Bluesky</option>
+      </select>
+    </div>
     <div class="form-group"><label>Name</label><input id="f-name" value="${account?.name || ""}"></div>
-    <div class="form-group"><label>Username (@)</label><input id="f-username" value="${account?.username || ""}"></div>
-    <div class="form-group"><label>auth_token</label><input id="f-auth-token" type="password" value=""></div>
-    <div class="form-group"><label>ct0</label><input id="f-ct0" type="password" value=""></div>
+    <div class="form-group" id="f-username-group" style="${isBluesky ? "display:none" : ""}">
+      <label>Username (@)</label><input id="f-username" value="${account?.username || ""}">
+    </div>
+    <div class="form-group"><label id="f-token-label">${isBluesky ? "Identifier (handle / メールアドレス)" : "auth_token"}</label><input id="f-auth-token" type="password" value=""></div>
+    <div class="form-group"><label id="f-ct0-label">${isBluesky ? "App Password" : "ct0"}</label><input id="f-ct0" type="password" value=""></div>
     <div class="form-group"><label>実行間隔（分）</label><input id="f-interval-minutes" type="number" min="1" value="${account?.interval_minutes ?? 5}"></div>
     <div class="form-group">
-      <label>ツイート末尾テキスト（tweet_suffix）</label>
+      <label>投稿末尾テキスト</label>
       <textarea id="f-tweet-suffix" rows="2" placeholder="例: &#10;#世界の祝日" style="font-family:monospace">${account?.tweet_suffix || ""}</textarea>
-      <div style="font-size:11px;color:#888;margin-top:2px">全投稿の末尾に自動付与。空欄で無効。\\n は改行。</div>
+      <div style="font-size:11px;color:#888;margin-top:2px">全投稿の末尾に自動付与。空欄で無効。</div>
     </div>
   `;
 }
@@ -47,7 +63,7 @@ export async function renderAccounts(container) {
       <button class="btn btn-primary" id="add-account">+ Add Account</button>
     </div>
     <div class="card"><table>
-      <thead><tr><th>Name</th><th>Username</th><th>Status</th><th>実行間隔</th><th>Created</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Name</th><th>Username</th><th>Platform</th><th>Status</th><th>実行間隔</th><th>Created</th><th>Actions</th></tr></thead>
       <tbody id="accounts-body"><tr><td colspan="6" class="empty-state">Loading...</td></tr></tbody>
     </table></div>
   `;
@@ -64,6 +80,7 @@ export async function renderAccounts(container) {
         <tr>
           <td>${a.name}</td>
           <td>@${a.username}</td>
+          <td><span class="badge badge-info" style="font-size:11px">${a.platform === "bluesky" ? "🦋 Bluesky" : "🐦 X"}</span></td>
           <td>
             <button class="btn btn-sm toggle-btn" data-id="${a.id}" data-active="${a.is_active}"
               style="background:${a.is_active ? "var(--success,#27ae60)" : "var(--danger,#e74c3c)"};color:#fff;min-width:64px">
@@ -187,14 +204,17 @@ export async function renderAccounts(container) {
 
   document.getElementById("add-account").onclick = () => {
     showModal("Add Account", accountFormHtml(), async () => {
+      const platform = document.getElementById("f-platform").value;
       const suffix = document.getElementById("f-tweet-suffix").value;
+      const usernameEl = document.getElementById("f-username");
       await api.createAccount({
         name: document.getElementById("f-name").value,
-        username: document.getElementById("f-username").value,
+        username: platform === "bluesky" ? document.getElementById("f-auth-token").value : (usernameEl?.value || ""),
         auth_token: document.getElementById("f-auth-token").value,
         ct0: document.getElementById("f-ct0").value,
         interval_minutes: Number(document.getElementById("f-interval-minutes").value) || 5,
         tweet_suffix: suffix || null,
+        platform,
       });
       loadAccounts();
     });

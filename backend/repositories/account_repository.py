@@ -13,7 +13,7 @@ class AccountRepository:
     def list_all(self) -> list[dict[str, Any]]:
         """Return all accounts ordered by id."""
         cursor = self._conn.execute(
-            "SELECT id, name, username, is_active, interval_minutes, tweet_suffix, created_at FROM accounts ORDER BY id"
+            "SELECT id, name, username, is_active, interval_minutes, tweet_suffix, platform, created_at FROM accounts ORDER BY id"
         )
         return [dict(row) for row in cursor.fetchall()]
 
@@ -25,9 +25,9 @@ class AccountRepository:
         return dict(row) if row else None
 
     def get_credentials(self, account_id: int) -> dict[str, Any] | None:
-        """Return auth_token and ct0 for a single account, or None."""
+        """Return auth_token, ct0, and platform for a single account, or None."""
         row = self._conn.execute(
-            "SELECT auth_token, ct0 FROM accounts WHERE id = ?", (account_id,)
+            "SELECT auth_token, ct0, platform FROM accounts WHERE id = ?", (account_id,)
         ).fetchone()
         return dict(row) if row else None
 
@@ -40,16 +40,17 @@ class AccountRepository:
         is_active: bool,
         interval_minutes: int = 5,
         tweet_suffix: str | None = None,
+        platform: str = "twitter",
     ) -> dict[str, Any]:
         """Insert a new account and return the created row."""
         cursor = self._conn.execute(
-            """INSERT INTO accounts (name, auth_token, ct0, username, is_active, interval_minutes, tweet_suffix)
-            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (name, encrypted_token, encrypted_ct0, username, is_active, interval_minutes, tweet_suffix),
+            """INSERT INTO accounts (name, auth_token, ct0, username, is_active, interval_minutes, tweet_suffix, platform)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (name, encrypted_token, encrypted_ct0, username, is_active, interval_minutes, tweet_suffix, platform),
         )
         self._conn.commit()
         row = self._conn.execute(
-            "SELECT id, name, username, is_active, interval_minutes, tweet_suffix, created_at FROM accounts WHERE id = ?",
+            "SELECT id, name, username, is_active, interval_minutes, tweet_suffix, platform, created_at FROM accounts WHERE id = ?",
             (cursor.lastrowid,),
         ).fetchone()
         return dict(row)
@@ -61,7 +62,7 @@ class AccountRepository:
         self._conn.execute(f"UPDATE accounts SET {set_clause} WHERE id = ?", values)
         self._conn.commit()
         row = self._conn.execute(
-            "SELECT id, name, username, is_active, interval_minutes, tweet_suffix, created_at FROM accounts WHERE id = ?",
+            "SELECT id, name, username, is_active, interval_minutes, tweet_suffix, platform, created_at FROM accounts WHERE id = ?",
             (account_id,),
         ).fetchone()
         return dict(row)

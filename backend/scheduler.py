@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 
 from crypto import decrypt
 from executor import apply_tweet_suffix, post_tweet
+from bluesky_executor import post_bluesky
 from repositories.schedule_repository import ScheduledPostRepository
 
 logger = logging.getLogger(__name__)
@@ -40,10 +41,14 @@ async def post_scheduled_post(repo: ScheduledPostRepository, conn: sqlite3.Conne
         image_paths = json.loads(post["image_paths"]) if isinstance(post["image_paths"], str) else (post["image_paths"] or [])
         content = apply_tweet_suffix(post["content"], post.get("tweet_suffix"))
 
-        # リトライ付き投稿（twitter-cli の一時エラー対策）
+        # リトライ付き投稿（platform に応じて振り分け）
+        platform = post.get("platform", "twitter")
         result = None
         for attempt in range(1, POST_MAX_RETRIES + 1):
-            result = await post_tweet(auth_token, ct0, content, images=image_paths)
+            if platform == "bluesky":
+                result = await post_bluesky(auth_token, ct0, content, images=image_paths)
+            else:
+                result = await post_tweet(auth_token, ct0, content, images=image_paths)
             if result.success:
                 break
             logger.warning("Post %d attempt %d/%d failed: %s", post_id, attempt, POST_MAX_RETRIES, result.error)

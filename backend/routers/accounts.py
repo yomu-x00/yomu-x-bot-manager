@@ -11,6 +11,7 @@ from jobs import sync_account_jobs
 from models import AccountCreate, AccountResponse, AccountUpdate, TweetPostRequest
 from repositories import AccountRepository
 from executor import apply_tweet_suffix, verify_credentials, post_tweet, get_user_tweets, delete_tweet
+from bluesky_executor import verify_bluesky, post_bluesky
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
@@ -32,12 +33,16 @@ async def cookie_health(
     results = []
     for account in accounts:
         row = repo.get_credentials(account["id"])
-        auth_token = decrypt(row["auth_token"], key)
-        ct0 = decrypt(row["ct0"], key)
-        result = await verify_credentials(auth_token, ct0)
+        token = decrypt(row["auth_token"], key)
+        ct0_or_pass = decrypt(row["ct0"], key)
+        if account.get("platform") == "bluesky":
+            result = await verify_bluesky(token, ct0_or_pass)
+        else:
+            result = await verify_credentials(token, ct0_or_pass)
         results.append({
             "account_id": account["id"],
             "username": account["username"],
+            "platform": account.get("platform", "twitter"),
             "valid": result.success,
             "error": result.error if not result.success else None,
         })
@@ -59,6 +64,7 @@ def create_account(
         is_active=data.is_active,
         interval_minutes=data.interval_minutes,
         tweet_suffix=data.tweet_suffix,
+        platform=data.platform,
     )
     sync_account_jobs()
     return result
@@ -102,6 +108,8 @@ def update_account(
         updates["ct0"] = encrypt(data.ct0, key)
     if data.tweet_suffix is not None:
         updates["tweet_suffix"] = data.tweet_suffix or None
+    if data.platform is not None:
+        updates["platform"] = data.platform
 
     if not updates:
         return repo.get_by_id(account_id)
@@ -129,16 +137,21 @@ async def post_tweet_direct(
     conn: sqlite3.Connection = Depends(get_db),
     key: bytes = Depends(get_key),
 ):
-    """指定アカウントで即時ツイートを投稿する。"""
+    """指定アカウントで即時投稿する（X / Bluesky 対応）。"""
     repo = AccountRepository(conn)
     account_row = repo.get_by_id(account_id)
     if not account_row:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    auth_token = decrypt(account_row["auth_token"], key)
-    ct0 = decrypt(account_row["ct0"], key)
+    token = decrypt(account_row["auth_token"], key)
+    ct0_or_pass = decrypt(account_row["ct0"], key)
     text = apply_tweet_suffix(data.text, account_row.get("tweet_suffix"))
-    result = await post_tweet(auth_token, ct0, text, data.images)
+
+    if account_row.get("platform") == "bluesky":
+        result = await post_bluesky(token, ct0_or_pass, text, data.images)
+    else:
+        result = await post_tweet(token, ct0_or_pass, text, data.images)
+
     if not result.success:
         raise HTTPException(status_code=500, detail=result.error)
     try:
@@ -155,11 +168,13 @@ async def get_account_timeline(
     conn: sqlite3.Connection = Depends(get_db),
     key: bytes = Depends(get_key),
 ):
-    """指定アカウントの最近のツイート一覧を返す。"""
+    """指定アカウントの最近のツイート一覧を返す（X のみ）。"""
     repo = AccountRepository(conn)
     account = repo.get_by_id(account_id)
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
+    if account.get("platform") == "bluesky":
+        raise HTTPException(status_code=400, detail="Timeline is not supported for Bluesky accounts")
 
     row = repo.get_credentials(account_id)
     auth_token = decrypt(row["auth_token"], key)
@@ -185,9 +200,12 @@ async def verify_account(
     if not row:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    auth_token = decrypt(row["auth_token"], key)
-    ct0 = decrypt(row["ct0"], key)
-    result = await verify_credentials(auth_token, ct0)
+    token = decrypt(row["auth_token"], key)
+    ct0_or_pass = decrypt(row["ct0"], key)
+    if row.get("platform") == "bluesky":
+        result = await verify_bluesky(token, ct0_or_pass)
+    else:
+        result = await verify_credentials(token, ct0_or_pass)
     return {"valid": result.success, "output": result.output, "error": result.error}
 
 

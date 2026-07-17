@@ -92,12 +92,14 @@ def init_db(db_path: Path | None = None) -> None:
     try:
         conn.executescript(SCHEMA)
 
-        # migrate: add interval_minutes to accounts if missing
+        # migrate: add columns to accounts if missing
         acct_cols = [r[1] for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
         if "interval_minutes" not in acct_cols:
             conn.execute("ALTER TABLE accounts ADD COLUMN interval_minutes INTEGER NOT NULL DEFAULT 5")
         if "tweet_suffix" not in acct_cols:
             conn.execute("ALTER TABLE accounts ADD COLUMN tweet_suffix TEXT")
+        if "platform" not in acct_cols:
+            conn.execute("ALTER TABLE accounts ADD COLUMN platform TEXT NOT NULL DEFAULT 'twitter'")
 
         # migrate: add image_paths to scheduled_posts if missing
         post_cols = [r[1] for r in conn.execute("PRAGMA table_info(scheduled_posts)").fetchall()]

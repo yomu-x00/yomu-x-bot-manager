@@ -14,6 +14,7 @@ class AccountCreate(BaseModel):
     is_active: bool = True
     interval_minutes: int = 5
     tweet_suffix: str | None = None
+    platform: str = "twitter"
 
 
 class AccountUpdate(BaseModel):
@@ -24,6 +25,7 @@ class AccountUpdate(BaseModel):
     is_active: bool | None = None
     interval_minutes: int | None = None
     tweet_suffix: str | None = None
+    platform: str | None = None
 
 
 class AccountResponse(BaseModel):
@@ -33,6 +35,7 @@ class AccountResponse(BaseModel):
     is_active: bool
     interval_minutes: int
     tweet_suffix: str | None
+    platform: str
     created_at: datetime
 
 
