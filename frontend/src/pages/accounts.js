@@ -190,7 +190,7 @@ export async function renderAccounts(container) {
             if (authToken) data.auth_token = authToken;
             if (ct0) data.ct0 = ct0;
             data.interval_minutes = intervalMinutes > 0 ? intervalMinutes : 5;
-            data.tweet_suffix = suffix || null;
+            data.tweet_suffix = suffix;  // 空文字のまま送る（バックエンドで null に変換）
             await api.updateAccount(account.id, data);
             loadAccounts();
           });
