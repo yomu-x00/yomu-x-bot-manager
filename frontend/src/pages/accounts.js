@@ -60,7 +60,10 @@ export async function renderAccounts(container) {
   container.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <h2>Accounts</h2>
-      <button class="btn btn-primary" id="add-account">+ Add Account</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="bulk-add-account" style="background:var(--border)">+ 一括追加</button>
+        <button class="btn btn-primary" id="add-account">+ Add Account</button>
+      </div>
     </div>
     <div class="card"><table>
       <thead><tr><th>Name</th><th>Username</th><th>Platform</th><th>Status</th><th>実行間隔</th><th>Created</th><th>Actions</th></tr></thead>
@@ -201,6 +204,104 @@ export async function renderAccounts(container) {
         `<tr><td colspan="6" class="empty-state">Failed to load accounts</td></tr>`;
     }
   }
+
+  document.getElementById("bulk-add-account").onclick = () => {
+    let rowCount = 0;
+
+    function addRowHtml(i) {
+      return `
+        <tr data-row="${i}">
+          <td>
+            <select class="bulk-platform" data-row="${i}" style="width:90px;padding:4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">
+              <option value="twitter">🐦 X</option>
+              <option value="bluesky">🦋 Bluesky</option>
+            </select>
+          </td>
+          <td><input class="bulk-name" data-row="${i}" placeholder="表示名" style="width:100%;padding:4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px"></td>
+          <td><input class="bulk-username" data-row="${i}" placeholder="@username" style="width:100%;padding:4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px"></td>
+          <td><input class="bulk-token" data-row="${i}" type="password" placeholder="auth_token / identifier" style="width:100%;padding:4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px"></td>
+          <td><input class="bulk-ct0" data-row="${i}" type="password" placeholder="ct0 / app_password" style="width:100%;padding:4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px"></td>
+          <td><button class="btn btn-sm btn-danger bulk-remove" data-row="${i}" style="padding:2px 8px">✕</button></td>
+        </tr>`;
+    }
+
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal" style="width:min(900px,96vw);max-width:96vw">
+        <h3>一括アカウント追加</h3>
+        <div style="overflow-x:auto;margin-bottom:12px">
+          <table style="width:100%;font-size:12px">
+            <thead>
+              <tr style="color:var(--text-secondary)">
+                <th style="padding:4px 6px">Platform</th>
+                <th style="padding:4px 6px">名前</th>
+                <th style="padding:4px 6px">Username (X のみ)</th>
+                <th style="padding:4px 6px">auth_token / identifier</th>
+                <th style="padding:4px 6px">ct0 / app_password</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="bulk-rows"></tbody>
+          </table>
+        </div>
+        <button class="btn" id="bulk-add-row" style="margin-bottom:16px;background:var(--border)">+ 行を追加</button>
+        <div id="bulk-result" style="font-size:12px;margin-bottom:12px"></div>
+        <div class="modal-actions">
+          <button class="btn" id="bulk-cancel">キャンセル</button>
+          <button class="btn btn-primary" id="bulk-save">すべて追加</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    function addRow() {
+      const tbody = overlay.querySelector("#bulk-rows");
+      tbody.insertAdjacentHTML("beforeend", addRowHtml(rowCount));
+      const row = tbody.querySelector(`[data-row="${rowCount}"]`);
+      row.querySelector(".bulk-platform").addEventListener("change", (e) => {
+        const isBluesky = e.target.value === "bluesky";
+        const r = e.target.dataset.row;
+        row.querySelector(`.bulk-username[data-row="${r}"]`).placeholder = isBluesky ? "（不要）" : "@username";
+        row.querySelector(`.bulk-token[data-row="${r}"]`).placeholder = isBluesky ? "identifier" : "auth_token";
+        row.querySelector(`.bulk-ct0[data-row="${r}"]`).placeholder = isBluesky ? "app_password" : "ct0";
+      });
+      row.querySelector(".bulk-remove").addEventListener("click", () => row.remove());
+      rowCount++;
+    }
+
+    addRow();
+
+    overlay.querySelector("#bulk-add-row").onclick = addRow;
+    overlay.querySelector("#bulk-cancel").onclick = () => overlay.remove();
+    overlay.querySelector("#bulk-save").onclick = async () => {
+      const rows = overlay.querySelectorAll("#bulk-rows tr");
+      const resultEl = overlay.querySelector("#bulk-result");
+      let ok = 0, ng = 0;
+      for (const row of rows) {
+        const r = row.dataset.row;
+        const platform = row.querySelector(`.bulk-platform[data-row="${r}"]`).value;
+        const name = row.querySelector(`.bulk-name[data-row="${r}"]`).value.trim();
+        const username = row.querySelector(`.bulk-username[data-row="${r}"]`).value.trim();
+        const token = row.querySelector(`.bulk-token[data-row="${r}"]`).value.trim();
+        const ct0 = row.querySelector(`.bulk-ct0[data-row="${r}"]`).value.trim();
+        if (!name || !token || !ct0) { ng++; continue; }
+        try {
+          await api.createAccount({
+            name,
+            username: platform === "bluesky" ? token : username,
+            auth_token: token,
+            ct0,
+            interval_minutes: 5,
+            tweet_suffix: null,
+            platform,
+          });
+          ok++;
+        } catch { ng++; }
+      }
+      resultEl.innerHTML = `<span style="color:var(--success)">✓ ${ok} 件追加</span>${ng ? `　<span style="color:var(--danger)">✗ ${ng} 件失敗（名前・token・ct0 が必須）</span>` : ""}`;
+      if (ok > 0) loadAccounts();
+    };
+  };
 
   document.getElementById("add-account").onclick = () => {
     showModal("Add Account", accountFormHtml(), async () => {
