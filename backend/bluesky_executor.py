@@ -1,6 +1,7 @@
 """Bluesky posting via the official atproto SDK."""
 
 import asyncio
+import io
 import logging
 import re
 from dataclasses import dataclass
@@ -53,6 +54,45 @@ def _build_facets(client, text: str) -> list:
     return facets or None
 
 
+BLUESKY_MAX_BLOB = 2_000_000  # 2MB
+
+
+def _compress_image(path: str) -> bytes:
+    """画像を Bluesky の上限（2MB）以下に収まるよう圧縮して bytes で返す。"""
+    from PIL import Image
+
+    with open(path, "rb") as f:
+        data = f.read()
+
+    if len(data) <= BLUESKY_MAX_BLOB:
+        return data
+
+    img = Image.open(io.BytesIO(data)).convert("RGB")
+
+    # JPEG 品質を下げながら圧縮
+    for quality in (85, 75, 65, 55, 45):
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        if buf.tell() <= BLUESKY_MAX_BLOB:
+            logger.info("Compressed image %s to %d bytes (quality=%d)", path, buf.tell(), quality)
+            return buf.getvalue()
+
+    # それでも超える場合は縮小
+    w, h = img.size
+    for scale in (0.8, 0.65, 0.5):
+        resized = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        buf = io.BytesIO()
+        resized.save(buf, format="JPEG", quality=65, optimize=True)
+        if buf.tell() <= BLUESKY_MAX_BLOB:
+            logger.info("Resized image %s to %.0f%% (%d bytes)", path, scale * 100, buf.tell())
+            return buf.getvalue()
+
+    # 最終手段
+    buf = io.BytesIO()
+    img.resize((int(w * 0.4), int(h * 0.4)), Image.LANCZOS).save(buf, format="JPEG", quality=55)
+    return buf.getvalue()
+
+
 def _login_and_post(identifier: str, app_password: str, text: str, images: list[str] | None) -> BlueskyResult:
     try:
         from atproto import Client, models
@@ -66,8 +106,8 @@ def _login_and_post(identifier: str, app_password: str, text: str, images: list[
         if images:
             blobs = []
             for path in images:
-                with open(path, "rb") as f:
-                    upload = client.upload_blob(f)
+                data = _compress_image(path)
+                upload = client.upload_blob(data)
                 blobs.append(models.AppBskyEmbedImages.Image(alt="", image=upload.blob))
             embed = models.AppBskyEmbedImages.Main(images=blobs)
 
