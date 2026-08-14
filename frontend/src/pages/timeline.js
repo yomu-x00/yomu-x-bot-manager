@@ -91,13 +91,13 @@ function tweetCardHtml(t) {
 
 function renderTweets(listEl, tweets, accountId, onDelete) {
   if (tweets.length === 0) {
-    listEl.innerHTML = `<div class="empty-state">ツイートがありません</div>`;
+    listEl.innerHTML = `<div class="empty-state">投稿がありません</div>`;
     return;
   }
   listEl.innerHTML = tweets.map((t) => tweetCardHtml(t)).join("");
   listEl.querySelectorAll(".del-tweet").forEach((btn) => {
     btn.onclick = async () => {
-      if (!confirm("このツイートを削除しますか？")) return;
+      if (!confirm("この投稿を削除しますか？")) return;
       btn.disabled = true;
       btn.textContent = "...";
       try {

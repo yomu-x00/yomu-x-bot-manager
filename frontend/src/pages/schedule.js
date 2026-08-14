@@ -446,7 +446,12 @@ export async function renderSchedule(container, accountId) {
 
       tbody.querySelectorAll(".delete-post").forEach((btn) => {
         btn.onclick = async () => {
-          if (confirm("Delete this scheduled post?")) {
+          const post = posts.find((p) => p.id === Number(btn.dataset.id));
+          const account = accounts.find((a) => a.id === post?.account_id);
+          const message = post?.status === "posted" && account?.platform === "bluesky"
+            ? "Bluesky 上の実際の投稿も完全に削除します。元に戻せません。続けますか？"
+            : "Delete this scheduled post?";
+          if (confirm(message)) {
             await api.deleteScheduledPost(btn.dataset.id);
             loadPosts(document.getElementById("filter-status").value);
           }
@@ -488,7 +493,15 @@ export async function renderSchedule(container, accountId) {
       document.getElementById("bulk-delete").onclick = async () => {
         const ids = getChecked();
         if (!ids.length) return;
-        if (!confirm(`選択した ${ids.length} 件を削除しますか？`)) return;
+        const deletesBlueskyPosts = ids.some((id) => {
+          const post = posts.find((p) => p.id === Number(id));
+          const account = accounts.find((a) => a.id === post?.account_id);
+          return post?.status === "posted" && account?.platform === "bluesky";
+        });
+        const message = deletesBlueskyPosts
+          ? `選択した ${ids.length} 件を削除します。投稿済みの Bluesky 投稿も完全に削除され、元に戻せません。続けますか？`
+          : `選択した ${ids.length} 件を削除しますか？`;
+        if (!confirm(message)) return;
         await Promise.all(ids.map((id) => api.deleteScheduledPost(id)));
         loadPosts(document.getElementById("filter-status").value);
       };

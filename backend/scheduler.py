@@ -56,7 +56,10 @@ async def post_scheduled_post(repo: ScheduledPostRepository, conn: sqlite3.Conne
                 await asyncio.sleep(POST_RETRY_DELAY)
 
         if result and result.success:
-            repo.mark_posted(post_id, datetime.now().isoformat())
+            # Bluesky は返却される AT URI を保存し、Scheduled Posts からも
+            # 実際の投稿を削除できるようにする。
+            posted_uri = result.output if platform == "bluesky" else None
+            repo.mark_posted(post_id, datetime.now().isoformat(), posted_uri)
             logger.info("Posted scheduled post %d", post_id)
             _schedule_next_repeat(conn, post)
             return True

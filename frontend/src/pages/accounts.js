@@ -137,7 +137,7 @@ export async function renderAccounts(container) {
             const accountId = Number(btn.dataset.id);
             const username = btn.dataset.username;
             const tweetsHtml = tweets.length === 0
-              ? `<div class="empty-state">ツイートがありません</div>`
+              ? `<div class="empty-state">投稿がありません</div>`
               : tweets.map((t) => `
                 <div style="padding:.6rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem">
                   <div style="flex:1;font-size:.9rem;word-break:break-all">${t.text || t.full_text || JSON.stringify(t)}</div>
@@ -151,7 +151,7 @@ export async function renderAccounts(container) {
             document.querySelectorAll(".del-tweet-btn").forEach((delBtn) => {
               delBtn.onclick = async (e) => {
                 e.stopPropagation();
-                if (!confirm("このツイートを削除しますか？")) return;
+                if (!confirm("この投稿を削除しますか？")) return;
                 delBtn.textContent = "...";
                 try {
                   await api.deleteTweet(accountId, delBtn.dataset.tweetId);

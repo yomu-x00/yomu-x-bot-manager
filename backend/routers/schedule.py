@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 
 from dependencies import get_db, get_key
+from crypto import decrypt
+from bluesky_executor import delete_bluesky_post
 from models import (
     BulkImageScheduleRequest,
     ScheduledPostBulkResult,
@@ -207,10 +209,28 @@ async def post_now(
 
 
 @router.delete("/{post_id}", status_code=204)
-def delete_scheduled_post(
+async def delete_scheduled_post(
     post_id: int,
     conn: sqlite3.Connection = Depends(get_db),
+    encryption_key: bytes = Depends(get_key),
 ):
+    """予約を削除する。投稿済みの Bluesky 投稿は実投稿も削除する。"""
     repo = ScheduledPostRepository(conn)
-    if repo.delete(post_id) == 0:
+    row = repo.get_with_credentials(post_id)
+    if not row:
         raise HTTPException(status_code=404, detail="Scheduled post not found")
+
+    if row["status"] == "posted" and row["platform"] == "bluesky":
+        posted_uri = row["posted_uri"]
+        if not posted_uri:
+            raise HTTPException(
+                status_code=409,
+                detail="This Bluesky post was created before post tracking was enabled. Delete it from Timeline instead.",
+            )
+        identifier = decrypt(row["auth_token"], encryption_key)
+        app_password = decrypt(row["ct0"], encryption_key)
+        result = await delete_bluesky_post(identifier, app_password, posted_uri)
+        if not result.success:
+            raise HTTPException(status_code=502, detail=f"Failed to delete Bluesky post: {result.error}")
+
+    repo.delete(post_id)

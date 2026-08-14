@@ -96,11 +96,11 @@ class ScheduledPostRepository:
         ).fetchone()
         return _parse_post_row(row)
 
-    def mark_posted(self, post_id: int, posted_at: str) -> None:
+    def mark_posted(self, post_id: int, posted_at: str, posted_uri: str | None = None) -> None:
         """Update a post's status to 'posted'."""
         self._conn.execute(
-            "UPDATE scheduled_posts SET status = 'posted', posted_at = ? WHERE id = ?",
-            (posted_at, post_id),
+            "UPDATE scheduled_posts SET status = 'posted', posted_at = ?, posted_uri = ? WHERE id = ?",
+            (posted_at, posted_uri, post_id),
         )
         self._conn.commit()
 

@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS scheduled_posts (
     repeat_config JSON NOT NULL DEFAULT '{}',
     image_paths TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'posted', 'failed')),
-    posted_at DATETIME
+    posted_at DATETIME,
+    posted_uri TEXT
 );
 
 CREATE TABLE IF NOT EXISTS rule_logs (
@@ -105,6 +106,9 @@ def init_db(db_path: Path | None = None) -> None:
         post_cols = [r[1] for r in conn.execute("PRAGMA table_info(scheduled_posts)").fetchall()]
         if "image_paths" not in post_cols:
             conn.execute("ALTER TABLE scheduled_posts ADD COLUMN image_paths TEXT NOT NULL DEFAULT '[]'")
+        if "posted_uri" not in post_cols:
+            # Bluesky の AT URI。投稿済みの予約投稿を実投稿ごと削除するために保持する。
+            conn.execute("ALTER TABLE scheduled_posts ADD COLUMN posted_uri TEXT")
 
         # migrate: expand repeat_type CHECK to include random_window
         row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='scheduled_posts'").fetchone()
@@ -123,12 +127,14 @@ def init_db(db_path: Path | None = None) -> None:
                     image_paths TEXT NOT NULL DEFAULT '[]',
                     status TEXT NOT NULL DEFAULT 'pending'
                         CHECK(status IN ('pending', 'posted', 'failed')),
-                    posted_at DATETIME
+                    posted_at DATETIME,
+                    posted_uri TEXT
                 )""")
+            uri_expr = "posted_uri" if "posted_uri" in existing_cols else "NULL"
             conn.execute(f"""INSERT INTO scheduled_posts_new
-                    (id, account_id, content, scheduled_at, repeat_type, repeat_config, image_paths, status, posted_at)
+                    (id, account_id, content, scheduled_at, repeat_type, repeat_config, image_paths, status, posted_at, posted_uri)
                 SELECT id, account_id, content, scheduled_at, repeat_type, repeat_config,
-                    {image_expr}, COALESCE(status, 'pending'), posted_at
+                    {image_expr}, COALESCE(status, 'pending'), posted_at, {uri_expr}
                 FROM scheduled_posts""")
             conn.execute("DROP TABLE scheduled_posts")
             conn.execute("ALTER TABLE scheduled_posts_new RENAME TO scheduled_posts")

@@ -55,6 +55,30 @@ facets のインデックスは**文字数ではなくバイト数（UTF-8）**�
 
 ---
 
+## Timeline 表示・投稿削除
+
+Accounts 一覧の **Timeline** ボタン、または Timeline 画面から、Bluesky の自分の投稿を一覧・削除できる。
+
+内部的には `backend/bluesky_executor.py` の以下を使う。
+
+| 関数 | 対応する AT Protocol API |
+|---|---|
+| `get_bluesky_posts()` | `app.bsky.feed.getAuthorFeed`（自分の DID を指定） |
+| `delete_bluesky_post()` | `com.atproto.repo.deleteRecord` |
+
+一覧はリポストと他人の投稿を除外し、**自分が削除できる投稿だけ**を返す。
+
+### 投稿 ID について
+
+Bluesky の投稿は `at://did:plc:xxxx/app.bsky.feed.post/3msxwixrdsc2v` という AT URI で識別されるが、
+スラッシュを含むため REST のパスパラメータにそのまま載せられない。
+そこで末尾の **rkey**（`3msxwixrdsc2v`）だけを ID として扱い、削除時にログイン中の DID から AT URI を組み立て直している。
+X 側の `tweet_id` と同じ位置に収まるので、フロントエンドは両プラットフォームを同じコードで扱える。
+
+削除は**取り消せない**。
+
+---
+
 ## 制限事項
 
 | 機能 | X | Bluesky |
@@ -63,6 +87,6 @@ facets のインデックスは**文字数ではなくバイト数（UTF-8）**�
 | 画像付き投稿 | ✅ | ✅ |
 | 即時投稿 | ✅ | ✅ |
 | 投稿末尾テキスト | ✅ | ✅ |
-| Timeline 表示 | ✅ | ❌（未対応） |
-| ツイート削除 | ✅ | ❌（未対応） |
+| Timeline 表示 | ✅ | ✅ |
+| 投稿削除 | ✅ | ✅ |
 | Cookie 失効検知 | ✅ | ✅（App Password の有効性を確認） |

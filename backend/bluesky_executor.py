@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -130,6 +131,82 @@ def _login_and_verify(identifier: str, app_password: str) -> BlueskyResult:
         return BlueskyResult(success=False, output="", error=str(e))
 
 
+def _post_uri(did: str, rkey: str) -> str:
+    return f"at://{did}/app.bsky.feed.post/{rkey}"
+
+
+def _feed_item_to_dict(post) -> dict:
+    """Bluesky の PostView を Timeline 画面が扱える dict に変換する。"""
+    record = getattr(post, "record", None)
+    author = getattr(post, "author", None)
+
+    media = []
+    embed = getattr(post, "embed", None)
+    # 画像付き投稿は embed.images、引用+画像は embed.media.images に入る
+    for holder in (embed, getattr(embed, "media", None)):
+        for img in getattr(holder, "images", None) or []:
+            url = getattr(img, "fullsize", None) or getattr(img, "thumb", None)
+            if url:
+                media.append({"type": "photo", "url": url})
+
+    return {
+        # rkey を id として扱う（AT URI はスラッシュを含み URL パスに載せられないため）
+        "id": str(post.uri).rsplit("/", 1)[-1],
+        "uri": str(post.uri),
+        "text": getattr(record, "text", "") or "",
+        "createdAtISO": getattr(record, "created_at", None) or getattr(post, "indexed_at", "") or "",
+        "media": media,
+        "author": {
+            "name": getattr(author, "display_name", "") or "",
+            "screenName": getattr(author, "handle", "") or "",
+            "profileImageUrl": getattr(author, "avatar", "") or "",
+        },
+        "metrics": {
+            "likes": getattr(post, "like_count", 0) or 0,
+            "retweets": getattr(post, "repost_count", 0) or 0,
+            "replies": getattr(post, "reply_count", 0) or 0,
+        },
+    }
+
+
+def _login_and_get_posts(identifier: str, app_password: str, count: int) -> BlueskyResult:
+    try:
+        from atproto import Client
+
+        client = Client()
+        profile = client.login(identifier, app_password)
+        feed = client.get_author_feed(actor=profile.did, limit=count)
+
+        posts = []
+        for item in feed.feed:
+            # リポスト（reason 付き）と他人の投稿は削除対象にならないので除外する
+            if getattr(item, "reason", None):
+                continue
+            if getattr(item.post.author, "did", None) != profile.did:
+                continue
+            posts.append(_feed_item_to_dict(item.post))
+
+        return BlueskyResult(success=True, output=json.dumps(posts), error="")
+    except Exception as e:
+        logger.error("Bluesky get_author_feed failed: %s", e)
+        return BlueskyResult(success=False, output="", error=str(e))
+
+
+def _login_and_delete(identifier: str, app_password: str, rkey: str) -> BlueskyResult:
+    try:
+        from atproto import Client
+
+        client = Client()
+        profile = client.login(identifier, app_password)
+        uri = rkey if rkey.startswith("at://") else _post_uri(profile.did, rkey)
+        if not client.delete_post(uri):
+            return BlueskyResult(success=False, output="", error=f"Failed to delete {uri}")
+        return BlueskyResult(success=True, output=uri, error="")
+    except Exception as e:
+        logger.error("Bluesky delete failed: %s", e)
+        return BlueskyResult(success=False, output="", error=str(e))
+
+
 async def post_bluesky(identifier: str, app_password: str, text: str, images: list[str] | None = None) -> BlueskyResult:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _login_and_post, identifier, app_password, text, images)
@@ -138,3 +215,15 @@ async def post_bluesky(identifier: str, app_password: str, text: str, images: li
 async def verify_bluesky(identifier: str, app_password: str) -> BlueskyResult:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _login_and_verify, identifier, app_password)
+
+
+async def get_bluesky_posts(identifier: str, app_password: str, count: int = 20) -> BlueskyResult:
+    """自分の投稿一覧を JSON 文字列（Timeline 画面と同じ形式）で返す。"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _login_and_get_posts, identifier, app_password, count)
+
+
+async def delete_bluesky_post(identifier: str, app_password: str, rkey: str) -> BlueskyResult:
+    """rkey（または AT URI）で指定した自分の投稿を削除する。"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _login_and_delete, identifier, app_password, rkey)

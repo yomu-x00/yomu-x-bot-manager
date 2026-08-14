@@ -300,6 +300,29 @@ class TestScheduleEndpoints:
         resp = client.delete("/api/schedule/1")
         assert resp.status_code == 204
 
+    def test_delete_posted_bluesky_scheduled_post_deletes_remote_post(self, client):
+        client.post("/api/accounts", json={
+            "name": "Bluesky Bot", "auth_token": "identifier", "ct0": "app-password",
+            "username": "bot.bsky.social", "platform": "bluesky",
+        })
+        client.post("/api/schedule", json={
+            "account_id": 1, "content": "Post", "scheduled_at": "2025-06-01T12:00:00",
+        })
+        from db import get_connection
+        from dependencies import get_db_path
+        conn = get_connection(get_db_path())
+        conn.execute("UPDATE scheduled_posts SET status='posted', posted_uri=? WHERE id=1", ("at://did:plc:test/app.bsky.feed.post/abc",))
+        conn.commit()
+        conn.close()
+
+        with patch("routers.schedule.delete_bluesky_post", new_callable=AsyncMock) as mock_delete:
+            from bluesky_executor import BlueskyResult
+            mock_delete.return_value = BlueskyResult(True, "", "")
+            resp = client.delete("/api/schedule/1")
+        assert resp.status_code == 204
+        mock_delete.assert_awaited_once_with("identifier", "app-password", "at://did:plc:test/app.bsky.feed.post/abc")
+        assert client.get("/api/schedule/1").status_code == 404
+
     def test_get_scheduled_post_by_id(self, client):
         self._create_account(client)
         client.post("/api/schedule", json={

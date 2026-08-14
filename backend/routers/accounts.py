@@ -11,7 +11,7 @@ from jobs import sync_account_jobs
 from models import AccountCreate, AccountResponse, AccountUpdate, TweetPostRequest
 from repositories import AccountRepository
 from executor import apply_tweet_suffix, verify_credentials, post_tweet, get_user_tweets, delete_tweet
-from bluesky_executor import verify_bluesky, post_bluesky
+from bluesky_executor import verify_bluesky, post_bluesky, get_bluesky_posts, delete_bluesky_post
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
@@ -168,18 +168,19 @@ async def get_account_timeline(
     conn: sqlite3.Connection = Depends(get_db),
     key: bytes = Depends(get_key),
 ):
-    """指定アカウントの最近のツイート一覧を返す（X のみ）。"""
+    """指定アカウントの最近の投稿一覧を返す（X / Bluesky 対応）。"""
     repo = AccountRepository(conn)
     account = repo.get_by_id(account_id)
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
-    if account.get("platform") == "bluesky":
-        raise HTTPException(status_code=400, detail="Timeline is not supported for Bluesky accounts")
 
     row = repo.get_credentials(account_id)
     auth_token = decrypt(row["auth_token"], key)
     ct0 = decrypt(row["ct0"], key)
-    result = await get_user_tweets(auth_token, ct0, account["username"], count)
+    if account.get("platform") == "bluesky":
+        result = await get_bluesky_posts(auth_token, ct0, count)
+    else:
+        result = await get_user_tweets(auth_token, ct0, account["username"], count)
     if not result.success:
         raise HTTPException(status_code=500, detail=result.error)
     try:
@@ -217,7 +218,7 @@ async def delete_account_tweet(
     conn: sqlite3.Connection = Depends(get_db),
     key: bytes = Depends(get_key),
 ):
-    """指定アカウントのツイートを削除する。"""
+    """指定アカウントの投稿を削除する（X / Bluesky 対応）。"""
     repo = AccountRepository(conn)
     row = repo.get_credentials(account_id)
     if not row:
@@ -225,7 +226,10 @@ async def delete_account_tweet(
 
     auth_token = decrypt(row["auth_token"], key)
     ct0 = decrypt(row["ct0"], key)
-    result = await delete_tweet(auth_token, ct0, tweet_id)
+    if row.get("platform") == "bluesky":
+        result = await delete_bluesky_post(auth_token, ct0, tweet_id)
+    else:
+        result = await delete_tweet(auth_token, ct0, tweet_id)
     if not result.success:
         raise HTTPException(status_code=500, detail=result.error)
     return {"status": "deleted", "tweet_id": tweet_id}

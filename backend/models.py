@@ -117,6 +117,7 @@ class ScheduledPostResponse(BaseModel):
     image_paths: list[str]
     status: str
     posted_at: datetime | None
+    posted_uri: str | None
 
 
 # --- Monitor ---
